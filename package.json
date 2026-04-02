@@ -1,0 +1,30 @@
+{
+  "name": "qarevel",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "api:dev": "npm run dev --workspace=apps/api",
+    "web:dev": "npm run dev --workspace=apps/web",
+    "runner:dev": "npm run dev --workspace=apps/runner",
+    "db:migrate": "npm run migration:run --workspace=apps/api",
+    "db:seed": "npm run seed --workspace=apps/api",
+    "generate:keys": "bash scripts/generate-keys.sh"
+  },
+  "devDependencies": {
+    "turbo": "^2.4.0",
+    "typescript": "^5.7.0"
+  },
+  "packageManager": "npm@11.6.0",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "dotenv": "^17.3.1"
+  }
+}
