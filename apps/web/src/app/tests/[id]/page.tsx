@@ -80,7 +80,9 @@ export default function TestCaseDetailPage() {
       setEnvironments(envs);
       if (devs.length > 0 && !runDeviceId) setRunDeviceId(devs[0].id);
       if (envs.length > 0 && !runEnvId) setRunEnvId(envs[0].id);
-    } catch {}
+    } catch (err) {
+      alert('Failed to load devices and environments. Please try again.');
+    }
   };
 
   const handleRun = async () => {

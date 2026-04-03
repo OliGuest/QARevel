@@ -29,6 +29,10 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 class StartRecordingDto {
   @IsUUID()
   environmentId: string;
+
+  @IsOptional()
+  @IsString()
+  name?: string;
 }
 
 class EventDto {
@@ -67,6 +71,7 @@ export class RecordingsController {
     return this.recordingsService.startRecording(
       dto.environmentId,
       req.user.userId,
+      dto.name,
     );
   }
 
@@ -110,6 +115,16 @@ export class RecordingsController {
   @ApiOperation({ summary: 'Get a recording by ID' })
   async getRecording(@Param('id', ParseUUIDPipe) id: string) {
     return this.recordingsService.getRecording(id);
+  }
+
+  @Post(':id/rename')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Rename a recording' })
+  async renameRecording(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: { name: string },
+  ) {
+    return this.recordingsService.renameRecording(id, body.name);
   }
 
   @Delete(':id')

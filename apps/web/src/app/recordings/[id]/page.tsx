@@ -6,6 +6,7 @@ import {
   ArrowLeft, Globe, Wifi, MousePointer, Terminal, Camera, FileText,
   ImageIcon, AlertTriangle, Zap, Play, Lightbulb, TrendingDown, Clock,
   Trash2, ExternalLink, ChevronRight, Activity, Shield, BarChart3, CheckCircle2,
+  Pencil, Check, X,
 } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Button } from '@/components/ui/Button';
@@ -97,6 +98,8 @@ export default function RecordingDetailPage() {
   const [activeTab, setActiveTab] = useState<Tab>('timeline');
   const [creatingTest, setCreatingTest] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [isRenaming, setIsRenaming] = useState(false);
+  const [editName, setEditName] = useState('');
 
   const handleDelete = async () => {
     if (!confirm('Delete this recording?')) return;
@@ -104,7 +107,7 @@ export default function RecordingDetailPage() {
     try { await api.deleteRecording(id); router.push('/recordings'); } catch { setDeleting(false); }
   };
 
-  const { data: recording, isLoading } = useApi<any>(useCallback(() => api.getRecording(id), [id]));
+  const { data: recording, isLoading, refetch: refetchRecording } = useApi<any>(useCallback(() => api.getRecording(id), [id]));
   const { data: allEvents } = useApi<any[]>(useCallback(() => api.getRecordingEvents(id), [id]));
   const { data: networkEvents } = useApi<any[]>(useCallback(() => api.getRecordingEvents(id, 'network'), [id]));
   const { data: pageLoadEvents } = useApi<any[]>(useCallback(() => api.getRecordingEvents(id, 'page_load'), [id]));
@@ -171,15 +174,54 @@ export default function RecordingDetailPage() {
               </button>
               <div>
                 <div className="flex items-center gap-3 mb-1">
-                  <h1 className="text-xl font-bold tracking-tight">{recording?.environment?.name || 'Recording'}</h1>
-                  <span className={cn('inline-flex items-center gap-1.5 text-sm font-semibold', sc.pill)}>
-                    <StatusIcon className="h-3.5 w-3.5" />
-                    {sc.label}
-                  </span>
+                  {isRenaming ? (
+                    <div className="flex items-center gap-2">
+                      <input
+                        autoFocus
+                        value={editName}
+                        onChange={(e) => setEditName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            api.renameRecording(id, editName.trim()).then(() => { refetchRecording(); setIsRenaming(false); });
+                          }
+                          if (e.key === 'Escape') setIsRenaming(false);
+                        }}
+                        className="text-xl font-bold tracking-tight bg-muted/50 border border-border rounded-lg px-3 py-1 focus:outline-none focus:ring-2 focus:ring-primary/30"
+                      />
+                      <button
+                        onClick={() => api.renameRecording(id, editName.trim()).then(() => { refetchRecording(); setIsRenaming(false); })}
+                        className="p-1.5 rounded-md hover:bg-emerald-500/10 text-emerald-600"
+                      >
+                        <Check className="h-4 w-4" />
+                      </button>
+                      <button onClick={() => setIsRenaming(false)} className="p-1.5 rounded-md hover:bg-muted text-muted-foreground">
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 group/name">
+                      <h1 className="text-xl font-bold tracking-tight">
+                        {recording?.name || recording?.environment?.name || 'Recording'}
+                      </h1>
+                      <button
+                        onClick={() => { setEditName(recording?.name || ''); setIsRenaming(true); }}
+                        className="p-1 rounded-md opacity-0 group-hover/name:opacity-100 hover:bg-muted text-muted-foreground transition-opacity"
+                        aria-label="Rename recording"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  )}
+                  {!isRenaming && (
+                    <span className={cn('inline-flex items-center gap-1.5 text-sm font-semibold', sc.pill)}>
+                      <StatusIcon className="h-3.5 w-3.5" />
+                      {sc.label}
+                    </span>
+                  )}
                 </div>
                 <p className="text-sm text-muted-foreground flex items-center gap-1.5">
                   <Globe className="h-3.5 w-3.5" />
-                  {recording?.environment?.baseUrl || ''}
+                  {recording?.environment?.name} — {recording?.environment?.baseUrl || ''}
                   <ExternalLink className="h-3 w-3" />
                 </p>
               </div>

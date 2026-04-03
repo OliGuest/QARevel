@@ -44,26 +44,22 @@ class ApiClient {
     path: string,
     options: RequestInit = {},
   ): Promise<T> {
-    const token = this.getToken();
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      ...(options.headers as Record<string, string>),
-    };
+    const response = await this.doFetch(path, options);
 
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
-
-    const response = await fetch(`${this.baseUrl}${path}`, {
-      ...options,
-      headers,
-    });
-
-    if (response.status === 401) {
+    // Try token refresh on 401
+    if (response.status === 401 && !path.includes('/auth/')) {
+      const refreshed = await this.tryRefresh();
+      if (refreshed) {
+        const retryResponse = await this.doFetch(path, options);
+        if (retryResponse.ok) {
+          if (retryResponse.status === 204) return undefined as T;
+          return retryResponse.json();
+        }
+      }
+      // Refresh failed or retry failed — logout
       if (typeof window !== 'undefined') {
         localStorage.removeItem('qarevel_access_token');
         localStorage.removeItem('qarevel_refresh_token');
-        // Only redirect if not already on login page
         if (!window.location.pathname.startsWith('/login')) {
           window.location.href = '/login';
         }
@@ -81,6 +77,60 @@ class ApiClient {
 
     if (response.status === 204) return undefined as T;
     return response.json();
+  }
+
+  private async doFetch(path: string, options: RequestInit = {}): Promise<Response> {
+    const token = this.getToken();
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      ...(options.headers as Record<string, string>),
+    };
+
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    return fetch(`${this.baseUrl}${path}`, {
+      ...options,
+      headers,
+    });
+  }
+
+  private refreshPromise: Promise<boolean> | null = null;
+
+  private async tryRefresh(): Promise<boolean> {
+    // Deduplicate concurrent refresh attempts
+    if (this.refreshPromise) return this.refreshPromise;
+
+    this.refreshPromise = (async () => {
+      try {
+        const refreshToken = typeof window !== 'undefined'
+          ? localStorage.getItem('qarevel_refresh_token')
+          : null;
+        if (!refreshToken) return false;
+
+        const response = await fetch(`${this.baseUrl}/auth/refresh`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refreshToken }),
+        });
+
+        if (!response.ok) return false;
+
+        const data = await response.json();
+        if (data.accessToken) {
+          localStorage.setItem('qarevel_access_token', data.accessToken);
+          return true;
+        }
+        return false;
+      } catch {
+        return false;
+      } finally {
+        this.refreshPromise = null;
+      }
+    })();
+
+    return this.refreshPromise;
   }
 
   // Auth
@@ -312,12 +362,16 @@ class ApiClient {
   }
 
   // Recordings
-  async startRecording(data: { environmentId: string }): Promise<{ id: string; correlationId: string; status: string; wsChannel: string }> {
+  async startRecording(data: { environmentId: string; name?: string }): Promise<{ id: string; correlationId: string; status: string; wsChannel: string }> {
     return this.request('/recordings/start', { method: 'POST', body: JSON.stringify(data) });
   }
 
   async stopRecording(id: string): Promise<any> {
     return this.request(`/recordings/${id}/stop`, { method: 'POST' });
+  }
+
+  async renameRecording(id: string, name: string): Promise<any> {
+    return this.request(`/recordings/${id}/rename`, { method: 'POST', body: JSON.stringify({ name }) });
   }
 
   async getRecordings(): Promise<any[]> {

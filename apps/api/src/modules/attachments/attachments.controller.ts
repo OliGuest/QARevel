@@ -7,15 +7,10 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { ConfigService } from '@nestjs/config';
 import { Response } from 'express';
 import { Client as MinioClient } from 'minio';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
-
-const MINIO_ENDPOINT = process.env.MINIO_ENDPOINT || 'localhost';
-const MINIO_PORT = parseInt(process.env.MINIO_PORT || '9000', 10);
-const MINIO_ACCESS_KEY = process.env.MINIO_ACCESS_KEY || 'qarevel';
-const MINIO_SECRET_KEY = process.env.MINIO_SECRET_KEY || 'qarevel123';
-const MINIO_BUCKET = process.env.MINIO_BUCKET || 'qarevel';
 
 @ApiTags('Attachments')
 @ApiBearerAuth()
@@ -23,15 +18,17 @@ const MINIO_BUCKET = process.env.MINIO_BUCKET || 'qarevel';
 @UseGuards(JwtAuthGuard)
 export class AttachmentsController {
   private readonly minioClient: MinioClient;
+  private readonly bucket: string;
 
-  constructor() {
+  constructor(private readonly configService: ConfigService) {
     this.minioClient = new MinioClient({
-      endPoint: MINIO_ENDPOINT,
-      port: MINIO_PORT,
+      endPoint: this.configService.get<string>('MINIO_ENDPOINT', 'localhost'),
+      port: this.configService.get<number>('MINIO_PORT', 9000),
       useSSL: false,
-      accessKey: MINIO_ACCESS_KEY,
-      secretKey: MINIO_SECRET_KEY,
+      accessKey: this.configService.get<string>('MINIO_ACCESS_KEY', 'qarevel'),
+      secretKey: this.configService.get<string>('MINIO_SECRET_KEY', 'qarevel123'),
     });
+    this.bucket = this.configService.get<string>('MINIO_BUCKET', 'qarevel');
   }
 
   @Get('screenshot')
@@ -45,7 +42,7 @@ export class AttachmentsController {
     }
 
     try {
-      const stream = await this.minioClient.getObject(MINIO_BUCKET, key);
+      const stream = await this.minioClient.getObject(this.bucket, key);
       res.setHeader('Content-Type', 'image/png');
       res.setHeader('Cache-Control', 'public, max-age=86400');
       stream.pipe(res);

@@ -278,7 +278,7 @@ export class TestsService {
             envVars: {},
           };
 
-          await this.testQueue.add('execute', jobData, { jobId: saved.id });
+          await this.testQueue.add('execute', jobData, { jobId: saved.id, attempts: 3, backoff: { type: 'exponential', delay: 5000 } });
           this.logger.log(`Enqueued test-execution job for run ${saved.id}`);
         }
       } catch (err) {

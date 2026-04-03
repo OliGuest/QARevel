@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Film, Search, Trash2 } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
@@ -10,6 +10,8 @@ import { useApi } from '@/hooks/useApi';
 import { api } from '@/lib/api';
 import { formatDuration, getRelativeTime } from '@/lib/utils';
 import { cn } from '@/lib/utils';
+import { TableSkeleton } from '@/components/ui/Skeleton';
+import { Pagination } from '@/components/ui/Pagination';
 
 function statusDotClass(status: string) {
   switch (status?.toLowerCase()) {
@@ -26,6 +28,13 @@ export default function RecordingsPage() {
   const fetcher = useCallback(() => api.getRecordings(), []);
   const { data: recordings, isLoading, refetch } = useApi<any[]>(fetcher);
   const [searchQuery, setSearchQuery] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 15;
+
+  // Reset to page 1 when search changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery]);
 
   const handleDelete = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -33,17 +42,26 @@ export default function RecordingsPage() {
     try {
       await api.deleteRecording(id);
       refetch();
-    } catch {}
+    } catch (err) {
+      alert('Failed to delete recording. Please try again.');
+    }
   };
 
   const filteredRecordings = (recordings || []).filter((rec: any) => {
     if (!searchQuery) return true;
     const q = searchQuery.toLowerCase();
     return (
+      (rec.name || '').toLowerCase().includes(q) ||
       (rec.environment?.name || '').toLowerCase().includes(q) ||
       (rec.status || '').toLowerCase().includes(q)
     );
   });
+
+  const totalPages = Math.ceil(filteredRecordings.length / pageSize);
+  const paginatedRecordings = filteredRecordings.slice(
+    (currentPage - 1) * pageSize,
+    currentPage * pageSize,
+  );
 
   const totalEvents = (rec: any) => {
     const summary = rec.summary || {};
@@ -62,7 +80,7 @@ export default function RecordingsPage() {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <input
                 type="text"
-                placeholder="Search by environment, status..."
+                placeholder="Search by name, environment, status..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className={cn(
@@ -75,10 +93,9 @@ export default function RecordingsPage() {
         </Card>
 
         {isLoading ? (
-          <div className="py-16 text-center">
-            <div className="inline-block h-8 w-8 rounded-full border-2 border-primary border-t-transparent animate-spin" />
-            <p className="text-sm text-muted-foreground mt-3">Loading recordings...</p>
-          </div>
+          <Card>
+            <TableSkeleton rows={6} cols={7} />
+          </Card>
         ) : !recordings || recordings.length === 0 ? (
           <div className="py-20 text-center">
             <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-muted">
@@ -95,58 +112,72 @@ export default function RecordingsPage() {
             <p className="text-sm text-muted-foreground">No recordings match your search</p>
           </div>
         ) : (
-          <Card>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Time</TableHead>
-                  <TableHead>Environment</TableHead>
-                  <TableHead>Duration</TableHead>
-                  <TableHead>Events</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="w-10"></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredRecordings.map((rec: any) => (
-                  <TableRow
-                    key={rec.id}
-                    className="cursor-pointer"
-                    onClick={() => router.push(`/recordings/${rec.id}`)}
-                  >
-                    <TableCell className="text-sm text-muted-foreground">
-                      {getRelativeTime(rec.createdAt)}
-                    </TableCell>
-                    <TableCell>
-                      <span className="text-sm font-medium text-foreground">
-                        {rec.environment?.name || rec.environmentId || '-'}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {rec.durationMs ? formatDuration(rec.durationMs) : '-'}
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {totalEvents(rec) || '-'}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <span className={statusDotClass(rec.status)} />
-                        <span className="text-sm capitalize">{rec.status}</span>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <button
-                        onClick={(e) => handleDelete(rec.id, e)}
-                        className="p-1.5 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </TableCell>
+          <>
+            <Card>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Environment</TableHead>
+                    <TableHead>Time</TableHead>
+                    <TableHead>Duration</TableHead>
+                    <TableHead>Events</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="w-10"></TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </Card>
+                </TableHeader>
+                <TableBody>
+                  {paginatedRecordings.map((rec: any) => (
+                    <TableRow
+                      key={rec.id}
+                      className="cursor-pointer"
+                      onClick={() => router.push(`/recordings/${rec.id}`)}
+                    >
+                      <TableCell>
+                        <span className="text-sm font-medium text-foreground">
+                          {rec.name || <span className="text-muted-foreground italic">Untitled</span>}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        <span className="text-sm text-muted-foreground">
+                          {rec.environment?.name || rec.environmentId || '-'}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {getRelativeTime(rec.createdAt)}
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {rec.durationMs ? formatDuration(rec.durationMs) : '-'}
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {totalEvents(rec) || '-'}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <span className={statusDotClass(rec.status)} />
+                          <span className="text-sm capitalize">{rec.status}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <button
+                          onClick={(e) => handleDelete(rec.id, e)}
+                          aria-label="Delete recording"
+                          className="p-1.5 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </Card>
+            <Pagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              onPageChange={setCurrentPage}
+            />
+          </>
         )}
       </div>
     </AppLayout>

@@ -35,6 +35,7 @@ export default function RecordPage() {
 
   const [state, setState] = useState<RecordingState>('idle');
   const [selectedEnvId, setSelectedEnvId] = useState<string | null>(null);
+  const [recordingName, setRecordingName] = useState('');
   const [recordingId, setRecordingId] = useState<string | null>(null);
   const [startedAt, setStartedAt] = useState<Date | null>(null);
   const [elapsed, setElapsed] = useState('0:00');
@@ -96,7 +97,10 @@ export default function RecordPage() {
     if (!selectedEnvId) return;
     setError('');
     try {
-      const result = await api.startRecording({ environmentId: selectedEnvId });
+      const result = await api.startRecording({
+        environmentId: selectedEnvId,
+        name: recordingName.trim() || undefined,
+      });
       setRecordingId(result.id);
       setStartedAt(new Date());
       setState('recording');
@@ -213,12 +217,19 @@ export default function RecordPage() {
             )}
           </div>
 
-          {/* Launch button */}
+          {/* Session name + Launch button */}
           {selectedEnvId && (
-            <Button className="w-full h-11" onClick={handleLaunch}>
-              <Play className="h-4 w-4" />
-              Launch Browser — {selectedEnv?.name}
-            </Button>
+            <div className="space-y-3">
+              <Input
+                placeholder="Session name (e.g. Login flow, Checkout test...)"
+                value={recordingName}
+                onChange={(e) => setRecordingName(e.target.value)}
+              />
+              <Button className="w-full h-11" onClick={handleLaunch}>
+                <Play className="h-4 w-4" />
+                Launch Browser — {selectedEnv?.name}
+              </Button>
+            </div>
           )}
         </div>
       </AppLayout>

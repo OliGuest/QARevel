@@ -60,6 +60,9 @@ export class TestRun {
   @JoinColumn({ name: 'triggered_by' })
   triggeredBy: User;
 
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  name: string | null;
+
   @Column({ type: 'varchar', length: 20 })
   type: string;
 

@@ -12,10 +12,13 @@ import {
   LogOut,
   Menu,
   X,
-
+  Sun,
+  Moon,
+  Monitor,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/stores/auth.store';
+import { useTheme } from '@/components/layout/ThemeProvider';
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -43,6 +46,7 @@ export function Sidebar() {
   const pathname = usePathname();
   const { user, logout } = useAuthStore();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const { theme, setTheme } = useTheme();
 
   const isActive = (href: string) => {
     if (href === '/dashboard') return pathname === '/dashboard';
@@ -58,7 +62,7 @@ export function Sidebar() {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 space-y-1 px-3 py-5 overflow-y-auto">
+      <nav className="flex-1 space-y-1 px-3 py-5 overflow-y-auto" aria-label="Main navigation">
         {navItems.map((item) => {
           const Icon = item.icon;
           const active = isActive(item.href);
@@ -67,6 +71,7 @@ export function Sidebar() {
               key={item.href}
               href={item.href}
               onClick={() => setMobileOpen(false)}
+              aria-current={active ? 'page' : undefined}
               className={cn(
                 'group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200',
                 active
@@ -86,6 +91,42 @@ export function Sidebar() {
           );
         })}
       </nav>
+
+      {/* Theme toggle */}
+      <div className="px-4 pb-2">
+        <div className="flex items-center rounded-lg bg-muted/50 p-1">
+          <button
+            onClick={() => setTheme('light')}
+            className={cn(
+              'flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium transition-colors',
+              theme === 'light' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
+            )}
+            aria-label="Light theme"
+          >
+            <Sun className="h-3.5 w-3.5" />
+          </button>
+          <button
+            onClick={() => setTheme('dark')}
+            className={cn(
+              'flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium transition-colors',
+              theme === 'dark' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
+            )}
+            aria-label="Dark theme"
+          >
+            <Moon className="h-3.5 w-3.5" />
+          </button>
+          <button
+            onClick={() => setTheme('system')}
+            className={cn(
+              'flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium transition-colors',
+              theme === 'system' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
+            )}
+            aria-label="System theme"
+          >
+            <Monitor className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      </div>
 
       {/* User section */}
       <div className="border-t border-border/60 p-4">
@@ -114,6 +155,7 @@ export function Sidebar() {
       {/* Mobile toggle */}
       <button
         onClick={() => setMobileOpen(true)}
+        aria-label="Open navigation menu"
         className="fixed left-4 top-4 z-40 rounded-lg border border-border bg-card p-2 shadow-md lg:hidden"
       >
         <Menu className="h-5 w-5" />
@@ -126,6 +168,7 @@ export function Sidebar() {
           <div className="fixed left-0 top-0 z-50 h-full w-64 border-r border-border bg-card shadow-xl">
             <button
               onClick={() => setMobileOpen(false)}
+              aria-label="Close navigation menu"
               className="absolute right-3 top-6 p-1 text-muted-foreground hover:text-foreground"
             >
               <X className="h-4 w-4" />

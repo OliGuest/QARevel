@@ -32,6 +32,7 @@ export class RecordingsService {
   async startRecording(
     environmentId: string,
     userId: string,
+    name?: string,
   ): Promise<{ id: string; correlationId: string; status: string; wsChannel: string }> {
     const environment = await this.environmentRepo.findOne({
       where: { id: environmentId },
@@ -50,6 +51,7 @@ export class RecordingsService {
       environmentId,
       appTargetId: null,
       triggeredById: userId,
+      name: name || null,
       type: 'recording',
       status: 'pending',
       correlationId,
@@ -69,7 +71,7 @@ export class RecordingsService {
         envVars: {},
       };
 
-      await this.testQueue.add('execute', jobData, { jobId: saved.id });
+      await this.testQueue.add('execute', jobData, { jobId: saved.id, attempts: 3, backoff: { type: 'exponential', delay: 5000 } });
       this.logger.log(`Enqueued recording job for run ${saved.id}`);
     } catch (err) {
       this.logger.error(
@@ -83,6 +85,13 @@ export class RecordingsService {
       status: saved.status,
       wsChannel: `test-run:${saved.id}`,
     };
+  }
+
+  async renameRecording(id: string, name: string): Promise<TestRun> {
+    const run = await this.testRunRepo.findOne({ where: { id }, relations: ['environment'] });
+    if (!run) throw new NotFoundException(`Recording ${id} not found`);
+    run.name = name;
+    return this.testRunRepo.save(run);
   }
 
   async stopRecording(id: string): Promise<TestRun> {

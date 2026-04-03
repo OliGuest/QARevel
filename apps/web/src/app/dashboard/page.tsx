@@ -11,6 +11,7 @@ import { useApi } from '@/hooks/useApi';
 import { api } from '@/lib/api';
 import { formatDuration, getRelativeTime } from '@/lib/utils';
 import { cn } from '@/lib/utils';
+import { StatsSkeleton, TableSkeleton } from '@/components/ui/Skeleton';
 
 const statStyles = [
   { border: 'stat-blue', iconBg: 'bg-blue-500/10', iconColor: 'text-blue-600 dark:text-blue-400' },
@@ -73,7 +74,7 @@ function statusBadgeVariant(status: string) {
 export default function DashboardPage() {
   const router = useRouter();
   const recordingsFetcher = useCallback(() => api.getRecordings(), []);
-  const { data: recordings } = useApi<any[]>(recordingsFetcher);
+  const { data: recordings, isLoading } = useApi<any[]>(recordingsFetcher);
 
   const totalRecordings = recordings?.length ?? 0;
   const activeRecordings = recordings?.filter((r: any) => r.status === 'running').length ?? 0;
@@ -114,7 +115,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      {isLoading ? <StatsSkeleton /> : <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatsCard
           title="Total Recordings"
           value={totalRecordings}
@@ -139,7 +140,7 @@ export default function DashboardPage() {
           icon={Clock}
           style={statStyles[3]}
         />
-      </div>
+      </div>}
 
       {/* Recent recordings table */}
       <Card>
@@ -156,7 +157,9 @@ export default function DashboardPage() {
           )}
         </div>
         <CardContent className="pt-4">
-          {recentRecordings.length === 0 ? (
+          {isLoading ? (
+            <TableSkeleton rows={5} cols={4} />
+          ) : recentRecordings.length === 0 ? (
             <div className="py-12 text-center">
               <Film className="h-10 w-10 text-muted-foreground/30 mx-auto mb-3" />
               <p className="text-sm text-muted-foreground">No recordings yet</p>

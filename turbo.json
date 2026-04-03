@@ -11,6 +11,11 @@
     },
     "lint": {
       "dependsOn": ["^build"]
+    },
+    "test": {
+      "dependsOn": ["^build"],
+      "inputs": ["src/**/*.ts", "src/**/*.tsx"],
+      "outputs": ["coverage/**"]
     }
   }
 }

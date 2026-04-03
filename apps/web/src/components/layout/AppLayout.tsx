@@ -26,6 +26,9 @@ export function AppLayout({ children, title }: AppLayoutProps) {
 
   return (
     <div className="min-h-screen bg-background">
+      <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-primary focus:px-4 focus:py-2 focus:text-primary-foreground focus:shadow-lg">
+        Skip to main content
+      </a>
       <Sidebar />
       <div className="lg:pl-64">
         {title && (
@@ -35,7 +38,7 @@ export function AppLayout({ children, title }: AppLayoutProps) {
             </div>
           </header>
         )}
-        <main className="p-6 lg:p-8">{children}</main>
+        <main id="main-content" className="p-6 lg:p-8">{children}</main>
       </div>
     </div>
   );
