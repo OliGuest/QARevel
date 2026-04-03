@@ -1,5 +1,5 @@
 import { chromium, Browser, BrowserContext, Page } from 'playwright';
-import { BaseExecutor, ExecutionResult, StepResult, JobData } from './base.executor';
+import { BaseExecutor, ExecutionResult, StepResult, JobData, resolveDeviceProfile } from './base.executor';
 
 export class PlaywrightExecutor extends BaseExecutor {
   async execute(jobData: JobData): Promise<ExecutionResult> {
@@ -20,14 +20,19 @@ export class PlaywrightExecutor extends BaseExecutor {
         args: ['--no-sandbox', '--disable-setuid-sandbox'],
       });
 
+      const device = resolveDeviceProfile(config);
       const contextOptions: Record<string, unknown> = {
-        viewport: { width: 1280, height: 720 },
+        viewport: device.viewport,
       };
+      if (device.userAgent) contextOptions.userAgent = device.userAgent;
+      if (device.isMobile !== undefined) contextOptions.isMobile = device.isMobile;
+      if (device.hasTouch !== undefined) contextOptions.hasTouch = device.hasTouch;
+      if (device.deviceScaleFactor !== undefined) contextOptions.deviceScaleFactor = device.deviceScaleFactor;
 
       if (config.recordVideo) {
         contextOptions.recordVideo = {
           dir: `/tmp/videos/${testRunId}`,
-          size: { width: 1280, height: 720 },
+          size: device.viewport,
         };
       }
 

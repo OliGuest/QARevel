@@ -33,6 +33,9 @@ export class RecordingsService {
     environmentId: string,
     userId: string,
     name?: string,
+    deviceProfile?: string,
+    viewport?: { width: number; height: number },
+    deviceSerial?: string,
   ): Promise<{ id: string; correlationId: string; status: string; wsChannel: string }> {
     const environment = await this.environmentRepo.findOne({
       where: { id: environmentId },
@@ -55,19 +58,29 @@ export class RecordingsService {
       type: 'recording',
       status: 'pending',
       correlationId,
-      config: {},
+      config: {
+        ...(deviceProfile ? { deviceProfile } : {}),
+        ...(viewport ? { viewport } : {}),
+        ...(deviceSerial ? { deviceSerial } : {}),
+      },
       startedAt: now,
     });
 
     const saved = await this.testRunRepo.save(run);
 
     try {
+      const isAndroidDevice = deviceProfile?.startsWith('android-');
+      const jobConfig: Record<string, unknown> = {};
+      if (deviceProfile) jobConfig.deviceProfile = deviceProfile;
+      if (viewport) jobConfig.viewport = viewport;
+      if (deviceSerial) jobConfig.deviceSerial = deviceSerial;
+
       const jobData = {
         testRunId: saved.id,
         correlationId,
         environmentBaseUrl: environment.baseUrl,
-        executorType: 'recording',
-        config: {},
+        executorType: isAndroidDevice ? 'android-cdp' : 'recording',
+        config: jobConfig,
         envVars: {},
       };
 

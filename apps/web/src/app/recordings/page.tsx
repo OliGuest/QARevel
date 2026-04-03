@@ -139,9 +139,16 @@ export default function RecordingsPage() {
                         </span>
                       </TableCell>
                       <TableCell>
-                        <span className="text-sm text-muted-foreground">
-                          {rec.environment?.name || rec.environmentId || '-'}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm text-muted-foreground">
+                            {rec.environment?.name || rec.environmentId || '-'}
+                          </span>
+                          {rec.config?.deviceProfile && (
+                            <span className="text-[10px] bg-muted text-muted-foreground px-1.5 py-0.5 rounded-md">
+                              {rec.config.deviceProfile.replace('web-', '').replace('android-', 'A:')}
+                            </span>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
                         {getRelativeTime(rec.createdAt)}

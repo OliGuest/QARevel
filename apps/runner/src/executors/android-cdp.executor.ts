@@ -1,6 +1,7 @@
 import { chromium, Browser, BrowserContext, Page } from 'playwright';
+import { execSync, exec } from 'child_process';
 import Redis from 'ioredis';
-import { BaseExecutor, ExecutionResult, RecordingJobData, resolveDeviceProfile } from './base.executor';
+import { BaseExecutor, ExecutionResult, RecordingJobData } from './base.executor';
 
 const API_INTERNAL_URL = process.env.API_INTERNAL_URL || 'http://localhost:3000';
 const REDIS_HOST = process.env.REDIS_HOST || 'localhost';
@@ -12,54 +13,75 @@ interface RecordingEvent {
   data: Record<string, any>;
 }
 
-export class RecordingExecutor extends BaseExecutor {
+interface AndroidConfig {
+  deviceSerial?: string;   // ADB serial (USB) or IP:port (wireless)
+  cdpPort?: number;        // Local port to forward CDP to (default 9222)
+  batchInterval?: number;
+  screenshotInterval?: number;
+  deviceProfile?: string;
+  viewport?: { width: number; height: number };
+}
+
+export class AndroidCdpExecutor extends BaseExecutor {
   private eventBuffer: RecordingEvent[] = [];
   private requestStartTimes = new Map<string, number>();
   private stopped = false;
 
   async execute(jobData: RecordingJobData | any): Promise<ExecutionResult> {
-    const { testRunId, environmentBaseUrl, config = {} } = jobData as RecordingJobData;
-    const batchInterval = config?.batchInterval ?? 3000;
+    const { testRunId, environmentBaseUrl, config = {} } = jobData;
+    const androidConfig = config as AndroidConfig;
+    const cdpPort = androidConfig.cdpPort || 9222;
+    const batchInterval = androidConfig.batchInterval ?? 3000;
     const startTime = Date.now();
 
     let browser: Browser | null = null;
     let context: BrowserContext | null = null;
     const redis = new Redis(REDIS_PORT, REDIS_HOST, { maxRetriesPerRequest: null });
     const timers: NodeJS.Timeout[] = [];
+    let adbForwarded = false;
 
     try {
       await this.updateTestRunStatus(testRunId, 'running');
 
-      browser = await chromium.launch({
-        headless: false,
-        args: ['--no-sandbox', '--disable-setuid-sandbox'],
-      });
+      // 1. Detect device
+      const deviceSerial = androidConfig.deviceSerial || this.detectDevice();
+      console.log(`[AndroidCDP] Using device: ${deviceSerial}`);
 
-      browser.on('disconnected', () => {
-        console.log('[RecordingExecutor] Browser disconnected by user');
-        this.stopped = true;
-      });
+      // 2. Ensure Chrome is running with debug enabled on the device
+      this.launchChromeOnDevice(deviceSerial, environmentBaseUrl);
 
-      const device = resolveDeviceProfile(config);
-      console.log(`[RecordingExecutor] Device profile: ${config?.deviceProfile || 'web-desktop'} (${device.viewport.width}x${device.viewport.height})`);
+      // 3. Forward CDP port via ADB
+      this.forwardCdpPort(deviceSerial, cdpPort);
+      adbForwarded = true;
+      console.log(`[AndroidCDP] CDP forwarded to localhost:${cdpPort}`);
 
-      const contextOptions: Record<string, unknown> = {
-        viewport: device.viewport,
-      };
-      if (device.userAgent) contextOptions.userAgent = device.userAgent;
-      if (device.isMobile !== undefined) contextOptions.isMobile = device.isMobile;
-      if (device.hasTouch !== undefined) contextOptions.hasTouch = device.hasTouch;
-      if (device.deviceScaleFactor !== undefined) contextOptions.deviceScaleFactor = device.deviceScaleFactor;
+      // 4. Wait for Chrome to be ready
+      await this.waitForCdp(cdpPort);
 
-      context = await browser.newContext(contextOptions);
+      // 5. Connect Playwright via CDP
+      browser = await chromium.connectOverCDP(`http://localhost:${cdpPort}`);
+      console.log(`[AndroidCDP] Connected to device Chrome via CDP`);
 
-      const page = await context.newPage();
+      // Get the existing context and page (Chrome on device already has one)
+      const contexts = browser.contexts();
+      context = contexts[0] || await browser.newContext();
+      const pages = context.pages();
+      let page: Page;
+
+      if (pages.length > 0) {
+        page = pages[0];
+        // Navigate to the target URL if not already there
+        const currentUrl = page.url();
+        if (!currentUrl.includes(environmentBaseUrl.replace(/https?:\/\//, ''))) {
+          await page.goto(environmentBaseUrl, { waitUntil: 'domcontentloaded' });
+        }
+      } else {
+        page = await context.newPage();
+        await page.goto(environmentBaseUrl, { waitUntil: 'domcontentloaded' });
+      }
+
       this.attachPageListeners(page, testRunId);
-
-      await page.goto(environmentBaseUrl, { waitUntil: 'domcontentloaded' });
       await this.injectClickTracker(page);
-
-      // Capture navigation performance for the initial load
       await this.capturePageLoadTiming(page);
 
       // Periodic event batch flush
@@ -68,7 +90,7 @@ export class RecordingExecutor extends BaseExecutor {
       }, batchInterval);
       timers.push(batchTimer);
 
-      // Periodic click collection for automation recording
+      // Periodic click collection
       const clickCollectTimer = setInterval(async () => {
         if (this.stopped) return;
         try {
@@ -84,18 +106,18 @@ export class RecordingExecutor extends BaseExecutor {
         try {
           const stopKey = await redis.get(`recording:stop:${testRunId}`);
           if (stopKey !== null) {
-            console.log('[RecordingExecutor] Stop signal received from Redis');
+            console.log('[AndroidCDP] Stop signal received from Redis');
             this.stopped = true;
           }
         } catch (err) {
-          console.error('[RecordingExecutor] Redis poll error:', (err as Error).message);
+          console.error('[AndroidCDP] Redis poll error:', (err as Error).message);
         }
       }, 2000);
       timers.push(stopPollTimer);
 
-      // Listen for popups (new tabs/windows)
+      // Listen for new pages/tabs
       context.on('page', (newPage: Page) => {
-        console.log('[RecordingExecutor] New page/popup detected');
+        console.log('[AndroidCDP] New page/tab detected on device');
         this.attachPageListeners(newPage, testRunId);
         this.injectClickTracker(newPage).catch(() => {});
       });
@@ -115,24 +137,28 @@ export class RecordingExecutor extends BaseExecutor {
       try {
         await this.collectClicks(page);
       } catch {
-        // Page may be closed already
+        // Page may be closed
       }
 
       // Flush remaining events
       await this.flushEvents(testRunId);
     } catch (err) {
       const error = err as Error;
-      console.error('[RecordingExecutor] Execution error:', error.message);
+      console.error('[AndroidCDP] Execution error:', error.message);
       await this.flushEvents(testRunId).catch(() => {});
     } finally {
       for (const timer of timers) {
         clearInterval(timer);
       }
-      if (context) {
-        await context.close().catch(() => {});
-      }
+      // Don't close browser — it's Chrome on the device, just disconnect
       if (browser) {
-        await browser.close().catch(() => {});
+        try { browser.close(); } catch { /* disconnect only */ }
+      }
+      // Remove ADB port forward
+      if (adbForwarded) {
+        try {
+          execSync(`adb forward --remove tcp:${cdpPort}`, { timeout: 5000 });
+        } catch { /* ignore */ }
       }
       await redis.quit().catch(() => {});
     }
@@ -142,6 +168,7 @@ export class RecordingExecutor extends BaseExecutor {
     const summary = {
       durationMs,
       stoppedAt: new Date().toISOString(),
+      device: androidConfig.deviceSerial || 'auto',
     };
 
     await this.updateTestRunStatus(testRunId, 'completed', summary);
@@ -154,8 +181,86 @@ export class RecordingExecutor extends BaseExecutor {
     };
   }
 
+  // ── ADB Helpers ──
+
+  private detectDevice(): string {
+    try {
+      const output = execSync('adb devices', { timeout: 5000 }).toString();
+      const lines = output.trim().split('\n').slice(1); // skip header
+      const devices = lines
+        .map(line => line.split('\t'))
+        .filter(parts => parts[1]?.trim() === 'device')
+        .map(parts => parts[0].trim());
+
+      if (devices.length === 0) {
+        throw new Error('No Android devices connected. Connect via USB or run "adb connect <ip>:5555"');
+      }
+      if (devices.length > 1) {
+        console.warn(`[AndroidCDP] Multiple devices found: ${devices.join(', ')}. Using first: ${devices[0]}`);
+      }
+      return devices[0];
+    } catch (err) {
+      if ((err as Error).message.includes('No Android devices')) throw err;
+      throw new Error(`ADB not found or not working: ${(err as Error).message}. Install Android SDK platform-tools.`);
+    }
+  }
+
+  private launchChromeOnDevice(serial: string, url: string): void {
+    try {
+      // Launch Chrome with remote debugging enabled
+      const serialFlag = `-s ${serial}`;
+      execSync(
+        `adb ${serialFlag} shell am start -n com.android.chrome/com.google.android.apps.chrome.Main -a android.intent.action.VIEW -d "${url}" --es "com.android.chrome.extra.EXTRA_DISABLE_FIRST_RUN_EXPERIENCE" "true"`,
+        { timeout: 10000 },
+      );
+      // Enable devtools socket
+      execSync(
+        `adb ${serialFlag} shell "echo chrome --remote-debugging-port=0 | su 0 sh" 2>/dev/null || true`,
+        { timeout: 5000 },
+      );
+      console.log(`[AndroidCDP] Launched Chrome on device with URL: ${url}`);
+    } catch (err) {
+      console.warn(`[AndroidCDP] Chrome launch warning: ${(err as Error).message}`);
+      // Chrome may already be running, continue
+    }
+  }
+
+  private forwardCdpPort(serial: string, localPort: number): void {
+    try {
+      // Remove any existing forward on this port
+      try {
+        execSync(`adb -s ${serial} forward --remove tcp:${localPort}`, { timeout: 5000 });
+      } catch { /* ignore */ }
+
+      execSync(
+        `adb -s ${serial} forward tcp:${localPort} localabstract:chrome_devtools_remote`,
+        { timeout: 5000 },
+      );
+    } catch (err) {
+      throw new Error(`Failed to forward CDP port: ${(err as Error).message}`);
+    }
+  }
+
+  private async waitForCdp(port: number, maxRetries = 15): Promise<void> {
+    for (let i = 0; i < maxRetries; i++) {
+      try {
+        const res = await fetch(`http://localhost:${port}/json/version`);
+        if (res.ok) {
+          const info = await res.json() as Record<string, string>;
+          console.log(`[AndroidCDP] Chrome version: ${info['Browser'] || 'unknown'}`);
+          return;
+        }
+      } catch {
+        // Not ready yet
+      }
+      await new Promise(r => setTimeout(r, 1000));
+    }
+    throw new Error(`Chrome DevTools not responding on port ${port} after ${maxRetries}s. Make sure Chrome is running on the device.`);
+  }
+
+  // ── Event tracking (same as RecordingExecutor) ──
+
   private attachPageListeners(page: Page, testRunId: string): void {
-    // Network request tracking
     page.on('request', (request) => {
       this.requestStartTimes.set(request.url() + request.method(), Date.now());
     });
@@ -180,43 +285,26 @@ export class RecordingExecutor extends BaseExecutor {
           resourceType: request.resourceType(),
         });
       } catch {
-        // Ignore errors from detached requests
+        // Ignore detached request errors
       }
     });
 
-    // Navigation tracking (main frame only)
     page.on('framenavigated', async (frame) => {
       if (frame !== page.mainFrame()) return;
 
       const url = frame.url();
       let title = '';
-      try {
-        title = await page.title();
-      } catch {
-        // Page may not be ready
-      }
+      try { title = await page.title(); } catch { /* not ready */ }
 
-      this.pushEvent('navigation', {
-        url,
-        title,
-      });
-
-      // Capture page load timing
+      this.pushEvent('navigation', { url, title });
       await this.capturePageLoadTiming(page);
-
-      // Re-inject click tracker after navigation
       await this.injectClickTracker(page).catch(() => {});
     });
 
-    // Console error tracking — screenshot only on errors
     page.on('console', async (msg) => {
       const level = msg.type();
-      this.pushEvent('console', {
-        level,
-        message: msg.text(),
-      });
+      this.pushEvent('console', { level, message: msg.text() });
 
-      // Screenshot only on errors
       if (level === 'error' || level === 'warning') {
         try {
           const buffer = await page.screenshot({ fullPage: false });
@@ -227,13 +315,10 @@ export class RecordingExecutor extends BaseExecutor {
             pageUrl: page.url(),
             errorMessage: msg.text(),
           });
-        } catch {
-          // Page may not be ready for screenshot
-        }
+        } catch { /* screenshot may fail */ }
       }
     });
 
-    // Page crash/error — always screenshot
     page.on('pageerror', async (error) => {
       this.pushEvent('error', {
         message: error.message,
@@ -250,20 +335,15 @@ export class RecordingExecutor extends BaseExecutor {
           pageUrl: page.url(),
           errorMessage: error.message,
         });
-      } catch {
-        // Page may be crashed
-      }
+      } catch { /* device may not support screenshot */ }
     });
 
-    // Popup tracking
     page.on('popup', async (popup) => {
       this.attachPageListeners(popup, testRunId);
       try {
         await popup.waitForLoadState('domcontentloaded');
         await this.injectClickTracker(popup);
-      } catch {
-        // Popup may close quickly
-      }
+      } catch { /* popup may close quickly */ }
     });
   }
 
@@ -280,9 +360,7 @@ export class RecordingExecutor extends BaseExecutor {
           loadCompleteMs: Math.round(navTiming.loadEventEnd - navTiming.startTime),
         });
       }
-    } catch {
-      // Page context may not be available
-    }
+    } catch { /* not available */ }
   }
 
   private async injectClickTracker(page: Page): Promise<void> {
@@ -317,9 +395,7 @@ export class RecordingExecutor extends BaseExecutor {
           true
         );
       })()`);
-    } catch {
-      // Page context may not be available
-    }
+    } catch { /* context may not be available */ }
   }
 
   private async collectClicks(page: Page): Promise<void> {
@@ -331,9 +407,7 @@ export class RecordingExecutor extends BaseExecutor {
       for (const click of clicks) {
         this.pushEvent('click', click);
       }
-    } catch {
-      // Page context may not be available
-    }
+    } catch { /* context may not be available */ }
   }
 
   private pushEvent(type: string, data: Record<string, any>): void {
@@ -358,13 +432,11 @@ export class RecordingExecutor extends BaseExecutor {
       });
 
       if (!response.ok) {
-        console.error(
-          `[RecordingExecutor] Failed to flush events: ${response.status} ${response.statusText}`,
-        );
+        console.error(`[AndroidCDP] Failed to flush events: ${response.status} ${response.statusText}`);
         this.eventBuffer.unshift(...events);
       }
     } catch (err) {
-      console.error('[RecordingExecutor] Event flush error:', (err as Error).message);
+      console.error('[AndroidCDP] Event flush error:', (err as Error).message);
       this.eventBuffer.unshift(...events);
     }
   }

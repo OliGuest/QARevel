@@ -26,6 +26,11 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 
 // ── DTOs ──
 
+class ViewportDto {
+  width: number;
+  height: number;
+}
+
 class StartRecordingDto {
   @IsUUID()
   environmentId: string;
@@ -33,6 +38,18 @@ class StartRecordingDto {
   @IsOptional()
   @IsString()
   name?: string;
+
+  @IsOptional()
+  @IsString()
+  deviceProfile?: string;
+
+  @IsOptional()
+  @IsObject()
+  viewport?: ViewportDto;
+
+  @IsOptional()
+  @IsString()
+  deviceSerial?: string;
 }
 
 class EventDto {
@@ -72,6 +89,9 @@ export class RecordingsController {
       dto.environmentId,
       req.user.userId,
       dto.name,
+      dto.deviceProfile,
+      dto.viewport,
+      dto.deviceSerial,
     );
   }
 

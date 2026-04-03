@@ -362,7 +362,13 @@ class ApiClient {
   }
 
   // Recordings
-  async startRecording(data: { environmentId: string; name?: string }): Promise<{ id: string; correlationId: string; status: string; wsChannel: string }> {
+  async startRecording(data: {
+    environmentId: string;
+    name?: string;
+    deviceProfile?: string;
+    viewport?: { width: number; height: number };
+    deviceSerial?: string;
+  }): Promise<{ id: string; correlationId: string; status: string; wsChannel: string }> {
     return this.request('/recordings/start', { method: 'POST', body: JSON.stringify(data) });
   }
 

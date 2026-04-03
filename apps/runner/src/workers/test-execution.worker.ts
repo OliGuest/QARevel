@@ -1,6 +1,7 @@
 import { Worker, Job, ConnectionOptions } from 'bullmq';
 import { PlaywrightExecutor } from '../executors/playwright.executor';
 import { RecordingExecutor } from '../executors/recording.executor';
+import { AndroidCdpExecutor } from '../executors/android-cdp.executor';
 import { JobData } from '../executors/base.executor';
 
 const QUEUE_NAME = 'test-execution';
@@ -25,6 +26,9 @@ export function createTestExecutionWorker(connection: ConnectionOptions): Worker
           break;
         case 'recording':
           executor = new RecordingExecutor();
+          break;
+        case 'android-cdp':
+          executor = new AndroidCdpExecutor();
           break;
         default:
           throw new Error(`Unknown executor type: ${executorType}`);
