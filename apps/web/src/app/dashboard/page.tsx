@@ -2,7 +2,7 @@
 
 import { useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { Film, Circle, Clock, Activity, ArrowRight } from 'lucide-react';
+import { Film, Circle, Clock, Activity, ArrowRight, CheckCircle2, FileText, AlertTriangle, Server, FlaskConical } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -74,7 +74,18 @@ function statusBadgeVariant(status: string) {
 export default function DashboardPage() {
   const router = useRouter();
   const recordingsFetcher = useCallback(() => api.getRecordings(), []);
+  const testRunsFetcher = useCallback(() => api.getTestRuns(), []);
+  const testCasesFetcher = useCallback(() => api.getTestCases(), []);
+  const envsFetcher = useCallback(() => api.getEnvironments(), []);
   const { data: recordings, isLoading } = useApi<any[]>(recordingsFetcher);
+  const { data: testRuns } = useApi<any[]>(testRunsFetcher);
+  const { data: testCases } = useApi<any[]>(testCasesFetcher);
+  const { data: environments } = useApi<any[]>(envsFetcher);
+
+  const totalRuns = testRuns?.length ?? 0;
+  const passedRuns = testRuns?.filter((r: any) => r.status === 'passed').length ?? 0;
+  const failedRuns = testRuns?.filter((r: any) => r.status === 'failed' || r.status === 'error').length ?? 0;
+  const passRate = totalRuns > 0 ? Math.round((passedRuns / totalRuns) * 100) : 0;
 
   const totalRecordings = recordings?.length ?? 0;
   const activeRecordings = recordings?.filter((r: any) => r.status === 'running').length ?? 0;
@@ -141,6 +152,22 @@ export default function DashboardPage() {
           style={statStyles[3]}
         />
       </div>}
+
+      {/* Test Health Stats */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <StatsCard title="Pass Rate" value={totalRuns > 0 ? `${passRate}%` : '-'} icon={CheckCircle2} style={{ border: 'stat-green', iconBg: 'bg-emerald-500/10', iconColor: 'text-emerald-600 dark:text-emerald-400' }} />
+        <StatsCard title="Test Cases" value={testCases?.length ?? '-'} icon={FileText} style={{ border: 'stat-blue', iconBg: 'bg-blue-500/10', iconColor: 'text-blue-600 dark:text-blue-400' }} />
+        <StatsCard title="Failed Runs" value={failedRuns} icon={AlertTriangle} style={{ border: 'stat-red', iconBg: 'bg-red-500/10', iconColor: 'text-red-600 dark:text-red-400' }} />
+        <StatsCard title="Environments" value={environments?.length ?? '-'} icon={Server} style={{ border: 'stat-purple', iconBg: 'bg-purple-500/10', iconColor: 'text-purple-600 dark:text-purple-400' }} />
+      </div>
+
+      {/* Quick Actions */}
+      <div className="flex flex-wrap gap-3">
+        <Button onClick={() => router.push('/record')} variant="outline"><Circle className="h-4 w-4 mr-2" />Start Recording</Button>
+        <Button onClick={() => router.push('/automation')} variant="outline"><FlaskConical className="h-4 w-4 mr-2" />Run Tests</Button>
+        <Button onClick={() => router.push('/insights')} variant="outline"><Activity className="h-4 w-4 mr-2" />View Insights</Button>
+        <Button onClick={() => router.push('/reports')} variant="outline"><FileText className="h-4 w-4 mr-2" />Reports</Button>
+      </div>
 
       {/* Recent recordings table */}
       <Card>

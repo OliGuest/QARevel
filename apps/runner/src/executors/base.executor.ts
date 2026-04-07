@@ -18,11 +18,30 @@ export interface StepResult {
   durationMs?: number;
 }
 
+export interface ConsoleError {
+  level: string;
+  text: string;
+  timestamp: number;
+  url: string;
+}
+
+export interface ErrorFingerprint {
+  hash: string;
+  message: string;
+  source: string;
+  count: number;
+  firstSeen: number;
+  lastSeen: number;
+  level: string;
+}
+
 export interface ExecutionResult {
   testRunId: string;
   status: 'passed' | 'failed' | 'error';
   stepResults: StepResult[];
   durationMs: number;
+  consoleErrors?: ConsoleError[];
+  errorFingerprints?: ErrorFingerprint[];
 }
 
 export interface JobData {

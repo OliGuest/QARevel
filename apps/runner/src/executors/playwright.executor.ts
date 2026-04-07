@@ -1,5 +1,6 @@
 import { chromium, Browser, BrowserContext, Page } from 'playwright';
 import { BaseExecutor, ExecutionResult, StepResult, JobData, resolveDeviceProfile } from './base.executor';
+import { deduplicateErrors } from '../utils/error-fingerprint';
 
 export class PlaywrightExecutor extends BaseExecutor {
   async execute(jobData: JobData): Promise<ExecutionResult> {
@@ -38,6 +39,43 @@ export class PlaywrightExecutor extends BaseExecutor {
 
       context = await browser.newContext(contextOptions);
       page = await context.newPage();
+
+      // Console error and warning capture (F1)
+      const consoleErrors: { level: string; text: string; timestamp: number; url: string }[] = [];
+      page.on('console', (msg) => {
+        const type = msg.type();
+        if (type === 'error' || type === 'warning') {
+          consoleErrors.push({
+            level: type,
+            text: msg.text(),
+            timestamp: Date.now(),
+            url: page?.url() || '',
+          });
+        }
+      });
+
+      // Page crash detection (F2)
+      page.on('crash', async () => {
+        console.error('[PlaywrightExecutor] Page crashed!');
+        overallStatus = 'error';
+        try {
+          // Try to capture state before full crash
+          const screenshotBuffer = await page!.screenshot({ fullPage: true }).catch(() => null);
+          if (screenshotBuffer) {
+            await this.uploadScreenshot(screenshotBuffer, testRunId);
+          }
+        } catch {}
+      });
+
+      // Uncaught exception capture (F2)
+      page.on('pageerror', (error) => {
+        consoleErrors.push({
+          level: 'pageerror',
+          text: error.message,
+          timestamp: Date.now(),
+          url: page?.url() || '',
+        });
+      });
 
       for (const step of steps) {
         const stepStart = Date.now();
@@ -119,11 +157,16 @@ export class PlaywrightExecutor extends BaseExecutor {
 
     await this.updateTestRunStatus(testRunId, overallStatus, summary);
 
+    // Deduplicate console errors by fingerprint (F3)
+    const errorFingerprints = consoleErrors.length > 0 ? deduplicateErrors(consoleErrors) : undefined;
+
     return {
       testRunId,
       status: overallStatus,
       stepResults,
       durationMs,
+      consoleErrors: consoleErrors.length > 0 ? consoleErrors : undefined,
+      errorFingerprints,
     };
   }
 

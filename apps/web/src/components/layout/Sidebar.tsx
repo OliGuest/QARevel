@@ -15,6 +15,7 @@ import {
   Sun,
   Moon,
   Monitor,
+  BarChart3,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/stores/auth.store';
@@ -25,6 +26,7 @@ const navItems = [
   { href: '/record', label: 'Start Testing', icon: Circle },
   { href: '/recordings', label: 'Recordings', icon: Film },
   { href: '/automation', label: 'Automation', icon: Zap },
+  { href: '/insights', label: 'Insights', icon: BarChart3 },
   { href: '/settings', label: 'Settings', icon: Settings },
 ];
 
