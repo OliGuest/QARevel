@@ -57,7 +57,8 @@ export function useTestRunSocket(testRunId: string | null): UseTestRunSocketResu
     const token = localStorage.getItem('qarevel_access_token');
     if (!token) return;
 
-    const wsUrl = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:3000';
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${wsProtocol}//${window.location.host}`;
     const socket = io(`${wsUrl}/ws`, {
       auth: { token },
       transports: ['websocket'],

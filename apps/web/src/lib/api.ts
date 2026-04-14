@@ -424,7 +424,13 @@ class ApiClient {
   }
 }
 
-const rawUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
-export const api = new ApiClient(
-  rawUrl.endsWith('/api') ? rawUrl : `${rawUrl}/api`,
-);
+function getApiBaseUrl(): string {
+  if (typeof window === 'undefined') {
+    return 'http://localhost:3000/api';
+  }
+  // In the browser, proxy through the Next.js server on the same origin
+  // so it works from any host (localhost, Tailscale, etc.)
+  return `${window.location.origin}/api`;
+}
+
+export const api = new ApiClient(getApiBaseUrl());
