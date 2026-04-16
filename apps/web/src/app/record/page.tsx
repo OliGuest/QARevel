@@ -400,6 +400,16 @@ export default function RecordPage() {
             </div>
           </div>
 
+          {/* Browser view via noVNC */}
+          <div className="rounded-lg border border-border overflow-hidden bg-black">
+            <iframe
+              src={`${window.location.protocol}//${window.location.hostname}:6080/vnc.html?autoconnect=true&resize=scale&reconnect=true&reconnect_delay=1000`}
+              className="w-full border-0"
+              style={{ height: '70vh' }}
+              allow="clipboard-read; clipboard-write"
+            />
+          </div>
+
           {/* Stop */}
           <Button variant="destructive" className="w-full h-11" onClick={handleStop}>
             <Square className="h-4 w-4" />
@@ -407,7 +417,7 @@ export default function RecordPage() {
           </Button>
 
           <p className="text-xs text-muted-foreground text-center">
-            Browse the app in the Chrome window. Network requests, clicks, and errors are being captured.
+            Browse the app in the browser above. Network requests, clicks, and errors are being captured.
           </p>
         </div>
       </AppLayout>

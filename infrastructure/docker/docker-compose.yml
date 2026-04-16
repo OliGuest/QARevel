@@ -65,6 +65,8 @@ services:
     build:
       context: ../..
       dockerfile: infrastructure/docker/Dockerfile.runner
+    ports:
+      - "6080:6080"
     environment:
       - DB_HOST=postgres
       - DB_PORT=5432
