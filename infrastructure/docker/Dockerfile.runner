@@ -10,4 +10,5 @@ COPY apps/runner apps/runner
 COPY packages/shared-types packages/shared-types
 COPY tsconfig.base.json .
 RUN npm run build --workspace=apps/runner
-CMD ["xvfb-run", "--auto-servernum", "--server-args=-screen 0 1920x1080x24", "node", "apps/runner/dist/main.js"]
+ENV DISPLAY=:99
+CMD ["sh", "-c", "Xvfb :99 -screen 0 1920x1080x24 -nolisten tcp &  sleep 1 && node apps/runner/dist/main.js"]
