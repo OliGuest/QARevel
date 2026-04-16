@@ -65,29 +65,21 @@ services:
     build:
       context: ../..
       dockerfile: infrastructure/docker/Dockerfile.runner
-    ports:
-      - "6080:6080"
+    network_mode: host
     environment:
-      - DB_HOST=postgres
+      - DB_HOST=localhost
       - DB_PORT=5432
       - DB_DATABASE=qarevel
       - DB_USERNAME=qarevel
       - DB_PASSWORD=qarevel
-      - REDIS_HOST=redis
+      - REDIS_HOST=localhost
       - REDIS_PORT=6379
-      - MINIO_ENDPOINT=minio
+      - MINIO_ENDPOINT=localhost
       - MINIO_PORT=9000
       - MINIO_ACCESS_KEY=qarevel
       - MINIO_SECRET_KEY=qarevel123
       - MINIO_BUCKET=qarevel
-      - API_INTERNAL_URL=http://api:3000
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      minio:
-        condition: service_healthy
+      - API_INTERNAL_URL=http://localhost:3000
     restart: unless-stopped
 
   postgres:
