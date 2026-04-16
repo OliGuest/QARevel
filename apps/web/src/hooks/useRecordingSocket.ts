@@ -40,6 +40,10 @@ export function useRecordingSocket(recordingId: string | null): UseRecordingSock
     const socket = io(`${wsUrl}/ws`, {
       auth: { token },
       transports: ['websocket'],
+      reconnection: true,
+      reconnectionAttempts: 10,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
     });
 
     socketRef.current = socket;
@@ -51,6 +55,10 @@ export function useRecordingSocket(recordingId: string | null): UseRecordingSock
 
     socket.on('disconnect', () => {
       setIsConnected(false);
+    });
+
+    socket.io.on('reconnect', () => {
+      socket.emit('subscribe', { channel: `test-run:${recordingId}` });
     });
 
     socket.on('recording:stats', (data: RecordingStats) => {

@@ -1,11 +1,15 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
 import { Repository } from 'typeorm';
 import { Report, TestRun, TestStepResult } from '../../database/entities';
 import { GenerateReportDto } from './dto/report.dto';
 
 @Injectable()
 export class ReportsService {
+  private readonly logger = new Logger(ReportsService.name);
+
   constructor(
     @InjectRepository(Report)
     private readonly reportRepo: Repository<Report>,
@@ -13,15 +17,49 @@ export class ReportsService {
     private readonly testRunRepo: Repository<TestRun>,
     @InjectRepository(TestStepResult)
     private readonly stepResultRepo: Repository<TestStepResult>,
+    @InjectQueue('report-generation')
+    private readonly reportQueue: Queue,
   ) {}
 
   async generate(dto: GenerateReportDto, userId: string): Promise<Report> {
     const run = await this.testRunRepo.findOne({ where: { id: dto.testRunId } });
     if (!run) throw new NotFoundException(`TestRun ${dto.testRunId} not found`);
 
-    // Build summary from step results
+    const report = this.reportRepo.create({
+      testRunId: dto.testRunId,
+      type: dto.type || 'standard',
+      status: 'generating',
+      summary: {},
+      generatedById: userId,
+    });
+
+    const saved = await this.reportRepo.save(report);
+
+    await this.reportQueue.add(
+      'generate',
+      {
+        reportId: saved.id,
+        testRunId: dto.testRunId,
+        correlationId: run.correlationId,
+        type: dto.type || 'standard',
+      },
+      {
+        jobId: saved.id,
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 3000 },
+      },
+    );
+
+    this.logger.log(`Enqueued report-generation job for report ${saved.id}, run ${dto.testRunId}`);
+    return saved;
+  }
+
+  async generateSync(testRunId: string, userId: string): Promise<Report> {
+    const run = await this.testRunRepo.findOne({ where: { id: testRunId } });
+    if (!run) throw new NotFoundException(`TestRun ${testRunId} not found`);
+
     const steps = await this.stepResultRepo.find({
-      where: { testRunId: dto.testRunId },
+      where: { testRunId },
     });
 
     const summary = {
@@ -40,9 +78,9 @@ export class ReportsService {
     };
 
     const report = this.reportRepo.create({
-      testRunId: dto.testRunId,
-      type: dto.type || 'standard',
-      status: 'ready', // In production, this would be 'generating' and a BullMQ job would process it
+      testRunId,
+      type: 'standard',
+      status: 'ready',
       summary,
       generatedById: userId,
     });

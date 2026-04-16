@@ -231,13 +231,133 @@ export default function ReportDetailPage() {
 
         {/* Performance tab */}
         {activeTab === 'performance' && (
-          <Card>
-            <CardContent className="pt-6">
-              <p className="py-8 text-center text-sm text-muted-foreground">
-                Performance metrics coming soon. Step timing data will appear here.
-              </p>
-            </CardContent>
-          </Card>
+          <div className="space-y-4">
+            {/* Step Duration Chart */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Step Durations</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {steps.length === 0 ? (
+                  <p className="py-4 text-center text-sm text-muted-foreground">No step data available</p>
+                ) : (
+                  <div className="space-y-2">
+                    {steps
+                      .filter((s) => s.durationMs)
+                      .sort((a, b) => (b.durationMs || 0) - (a.durationMs || 0))
+                      .map((step) => {
+                        const maxDuration = Math.max(...steps.map((s) => s.durationMs || 0));
+                        const pct = maxDuration > 0 ? ((step.durationMs || 0) / maxDuration) * 100 : 0;
+                        return (
+                          <div key={step.id || step.stepNumber} className="flex items-center gap-3">
+                            <span className="w-16 text-xs text-muted-foreground shrink-0">Step {step.stepNumber}</span>
+                            <div className="flex-1 h-6 bg-muted rounded overflow-hidden">
+                              <div
+                                className={`h-full rounded ${
+                                  step.status === 'PASSED' ? 'bg-emerald-500' :
+                                  step.status === 'FAILED' || step.status === 'ERROR' ? 'bg-red-500' :
+                                  'bg-amber-500'
+                                }`}
+                                style={{ width: `${Math.max(pct, 2)}%` }}
+                              />
+                            </div>
+                            <span className="w-20 text-xs text-right font-mono text-muted-foreground shrink-0">
+                              {formatDuration(step.durationMs || 0)}
+                            </span>
+                          </div>
+                        );
+                      })}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* API Performance Summary */}
+            {summary?.apiSummary && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>API Performance</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                    <div>
+                      <p className="text-sm text-muted-foreground">Total Requests</p>
+                      <p className="text-2xl font-bold">{summary.apiSummary.totalRequests || 0}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Avg Response Time</p>
+                      <p className="text-2xl font-bold">{summary.apiSummary.avgResponseMs || 0}ms</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Error Rate</p>
+                      <p className={`text-2xl font-bold ${(summary.apiSummary.errorRate || 0) > 5 ? 'text-destructive' : 'text-success'}`}>
+                        {(summary.apiSummary.errorRate || 0).toFixed(1)}%
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Failed Requests</p>
+                      <p className="text-2xl font-bold text-destructive">{summary.apiSummary.failedRequests || 0}</p>
+                    </div>
+                  </div>
+
+                  {/* Response Time Percentiles */}
+                  {(summary.apiSummary.p50 || summary.apiSummary.p95 || summary.apiSummary.p99) && (
+                    <div className="mt-6 border-t border-border pt-4">
+                      <p className="text-sm font-medium mb-3">Response Time Percentiles</p>
+                      <div className="grid gap-4 sm:grid-cols-3">
+                        <div className="text-center p-3 rounded bg-muted">
+                          <p className="text-xs text-muted-foreground">p50 (median)</p>
+                          <p className="text-lg font-bold">{summary.apiSummary.p50 || 0}ms</p>
+                        </div>
+                        <div className="text-center p-3 rounded bg-muted">
+                          <p className="text-xs text-muted-foreground">p95</p>
+                          <p className="text-lg font-bold">{summary.apiSummary.p95 || 0}ms</p>
+                        </div>
+                        <div className="text-center p-3 rounded bg-muted">
+                          <p className="text-xs text-muted-foreground">p99</p>
+                          <p className="text-lg font-bold">{summary.apiSummary.p99 || 0}ms</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Overall Timing */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Timing Overview</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid gap-4 sm:grid-cols-3">
+                  <div>
+                    <p className="text-sm text-muted-foreground">Total Duration</p>
+                    <p className="text-lg font-semibold">{summary?.durationMs ? formatDuration(summary.durationMs) : '-'}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Avg Step Duration</p>
+                    <p className="text-lg font-semibold">
+                      {steps.length > 0
+                        ? formatDuration(
+                            Math.round(steps.reduce((sum, s) => sum + (s.durationMs || 0), 0) / steps.length)
+                          )
+                        : '-'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Slowest Step</p>
+                    <p className="text-lg font-semibold">
+                      {(() => {
+                        const slowest = steps.reduce((max, s) => (s.durationMs || 0) > (max?.durationMs || 0) ? s : max, steps[0]);
+                        return slowest?.durationMs ? `Step ${slowest.stepNumber} (${formatDuration(slowest.durationMs)})` : '-';
+                      })()}
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         )}
       </div>
     </AppLayout>

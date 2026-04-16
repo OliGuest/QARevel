@@ -18,6 +18,9 @@ import { ReportsModule } from './modules/reports/reports.module';
 import { GatewayModule } from './modules/gateway/gateway.module';
 import { AttachmentsModule } from './modules/attachments/attachments.module';
 import { RecordingsModule } from './modules/recordings/recordings.module';
+import { TracesModule } from './modules/traces/traces.module';
+import { EventsModule } from './modules/events/events.module';
+import { AlertsModule } from './modules/alerts/alerts.module';
 import { HealthModule } from './modules/health/health.module';
 
 @Module({
@@ -87,6 +90,9 @@ import { HealthModule } from './modules/health/health.module';
     GatewayModule,
     AttachmentsModule,
     RecordingsModule,
+    TracesModule,
+    EventsModule,
+    AlertsModule,
     HealthModule,
   ],
   providers: [

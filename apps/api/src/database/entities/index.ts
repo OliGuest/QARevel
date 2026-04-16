@@ -14,3 +14,4 @@ export { CrashEvent } from './crash-event.entity';
 export { Attachment } from './attachment.entity';
 export { Report } from './report.entity';
 export { RecordingEvent } from './recording-event.entity';
+export { AlertRule } from './alert-rule.entity';

@@ -62,6 +62,10 @@ export function useTestRunSocket(testRunId: string | null): UseTestRunSocketResu
     const socket = io(`${wsUrl}/ws`, {
       auth: { token },
       transports: ['websocket'],
+      reconnection: true,
+      reconnectionAttempts: 10,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
     });
 
     socketRef.current = socket;
@@ -73,6 +77,10 @@ export function useTestRunSocket(testRunId: string | null): UseTestRunSocketResu
 
     socket.on('disconnect', () => {
       setIsConnected(false);
+    });
+
+    socket.io.on('reconnect', () => {
+      socket.emit('subscribe', { channel: `test-run:${testRunId}` });
     });
 
     socket.on('step-result', (data: StepResultEvent) => {

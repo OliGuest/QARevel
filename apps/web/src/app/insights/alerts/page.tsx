@@ -1,9 +1,8 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
-import { Bell, Plus, Trash2, AlertTriangle, CheckCircle2, Clock } from 'lucide-react';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
+import { useState, useCallback } from 'react';
+import { Bell, Plus, Trash2 } from 'lucide-react';
+import { Card, CardContent } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -20,61 +19,74 @@ interface AlertRule {
   testCaseId?: string;
   environmentId?: string;
   enabled: boolean;
+  lastTriggeredAt: string | null;
+  triggerCount: number;
   createdAt: string;
 }
 
+const conditionLabels: Record<string, string> = {
+  test_failure_streak: 'Test fails X times in a row',
+  error_rate_threshold: 'Error rate exceeds X%',
+  environment_down: 'Environment health check fails',
+  flaky_detected: 'Flaky test detected (>X% failure rate)',
+};
+
 export default function AlertsPage() {
-  const router = useRouter();
-  const [rules, setRules] = useState<AlertRule[]>([]);
+  const rulesFetcher = useCallback(() => api.getAlertRules(), []);
+  const { data: rules, isLoading, refetch } = useApi<AlertRule[]>(rulesFetcher);
   const [showCreate, setShowCreate] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [formName, setFormName] = useState('');
   const [formCondition, setFormCondition] = useState<AlertRule['conditionType']>('test_failure_streak');
   const [formThreshold, setFormThreshold] = useState(3);
 
-  const testCasesFetcher = useCallback(() => api.getTestCases(), []);
-  const envsFetcher = useCallback(() => api.getEnvironments(), []);
-  const { data: testCases } = useApi<any[]>(testCasesFetcher);
-  const { data: environments } = useApi<any[]>(envsFetcher);
-
-  // For now, store rules in localStorage since backend alert rules aren't implemented yet
-  useEffect(() => {
-    const stored = localStorage.getItem('qarevel_alert_rules');
-    if (stored) setRules(JSON.parse(stored));
-  }, []);
-
-  const saveRules = (updated: AlertRule[]) => {
-    setRules(updated);
-    localStorage.setItem('qarevel_alert_rules', JSON.stringify(updated));
-  };
-
-  const handleCreate = () => {
+  const handleCreate = async () => {
     if (!formName) return;
-    const newRule: AlertRule = {
-      id: crypto.randomUUID(),
-      name: formName,
-      conditionType: formCondition,
-      threshold: formThreshold,
-      enabled: true,
-      createdAt: new Date().toISOString(),
-    };
-    saveRules([...rules, newRule]);
-    setShowCreate(false);
-    setFormName('');
+    setSubmitting(true);
+    try {
+      await api.createAlertRule({
+        name: formName,
+        conditionType: formCondition,
+        threshold: formThreshold,
+      });
+      setShowCreate(false);
+      setFormName('');
+      setFormThreshold(3);
+      refetch();
+    } catch (err: any) {
+      alert(err.message || 'Failed to create rule');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
-  const toggleRule = (id: string) => {
-    saveRules(rules.map((r) => r.id === id ? { ...r, enabled: !r.enabled } : r));
+  const toggleRule = async (rule: AlertRule) => {
+    try {
+      await api.updateAlertRule(rule.id, { enabled: !rule.enabled });
+      refetch();
+    } catch (err: any) {
+      alert(err.message || 'Failed to update rule');
+    }
   };
 
-  const deleteRule = (id: string) => {
-    saveRules(rules.filter((r) => r.id !== id));
+  const deleteRule = async (id: string) => {
+    if (!confirm('Delete this alert rule?')) return;
+    try {
+      await api.deleteAlertRule(id);
+      refetch();
+    } catch (err: any) {
+      alert(err.message || 'Failed to delete rule');
+    }
   };
 
-  const conditionLabels: Record<string, string> = {
-    test_failure_streak: 'Test fails X times in a row',
-    error_rate_threshold: 'Error rate exceeds X%',
-    environment_down: 'Environment health check fails',
-    flaky_detected: 'Flaky test detected (>20% failure rate)',
+  const handleEvaluate = async () => {
+    try {
+      const result = await api.evaluateAlerts();
+      alert(`Evaluated ${result.evaluated} rules. ${result.triggered} triggered.`);
+      refetch();
+    } catch (err: any) {
+      alert(err.message || 'Failed to evaluate');
+    }
   };
 
   return (
@@ -85,10 +97,15 @@ export default function AlertsPage() {
           <h1 className="text-2xl font-bold tracking-tight">Alert Rules</h1>
           <p className="text-sm text-muted-foreground mt-1">Get notified when tests fail, environments go down, or flaky tests are detected</p>
         </div>
-        <Button onClick={() => setShowCreate(!showCreate)}>
-          <Plus className="h-4 w-4 mr-2" />
-          {showCreate ? 'Cancel' : 'New Rule'}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={handleEvaluate}>
+            Run Evaluation
+          </Button>
+          <Button onClick={() => setShowCreate(!showCreate)}>
+            <Plus className="h-4 w-4 mr-2" />
+            {showCreate ? 'Cancel' : 'New Rule'}
+          </Button>
+        </div>
       </div>
 
       {showCreate && (
@@ -112,12 +129,14 @@ export default function AlertsPage() {
                 <Input type="number" value={formThreshold} onChange={(e) => setFormThreshold(parseInt(e.target.value) || 1)} min={1} />
               </div>
             </div>
-            <Button onClick={handleCreate} disabled={!formName}>Create Rule</Button>
+            <Button onClick={handleCreate} disabled={!formName} loading={submitting}>Create Rule</Button>
           </CardContent>
         </Card>
       )}
 
-      {rules.length === 0 ? (
+      {isLoading ? (
+        <p className="py-8 text-center text-sm text-muted-foreground">Loading alert rules...</p>
+      ) : !rules || rules.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center">
             <Bell className="h-12 w-12 text-muted-foreground/30 mx-auto mb-3" />
@@ -136,11 +155,20 @@ export default function AlertsPage() {
                     </div>
                     <div>
                       <p className="font-medium">{rule.name}</p>
-                      <p className="text-xs text-muted-foreground">{conditionLabels[rule.conditionType]} (threshold: {rule.threshold})</p>
+                      <p className="text-xs text-muted-foreground">
+                        {conditionLabels[rule.conditionType]} (threshold: {rule.threshold})
+                        {rule.triggerCount > 0 && (
+                          <span className="ml-2 text-amber-500">Triggered {rule.triggerCount}x</span>
+                        )}
+                      </p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Badge variant={rule.enabled ? 'default' : 'secondary'} className="cursor-pointer" onClick={() => toggleRule(rule.id)}>
+                    <Badge
+                      variant={rule.enabled ? 'default' : 'secondary'}
+                      className="cursor-pointer"
+                      onClick={() => toggleRule(rule)}
+                    >
                       {rule.enabled ? 'Active' : 'Disabled'}
                     </Badge>
                     <Button variant="ghost" size="sm" onClick={() => deleteRule(rule.id)}>

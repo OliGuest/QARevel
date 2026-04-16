@@ -13,6 +13,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { TestsService } from './tests.service';
+import { TestAnalyticsService } from './test-analytics.service';
 import {
   CreateTestCaseDto,
   UpdateTestCaseDto,
@@ -32,7 +33,10 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 @Controller('test-cases')
 @UseGuards(JwtAuthGuard)
 export class TestCasesController {
-  constructor(private readonly testsService: TestsService) {}
+  constructor(
+    private readonly testsService: TestsService,
+    private readonly analyticsService: TestAnalyticsService,
+  ) {}
 
   @Get()
   @ApiOperation({ summary: 'List all test cases' })
@@ -55,6 +59,16 @@ export class TestCasesController {
     @Request() req: { user: { userId: string } },
   ) {
     return this.testsService.createCase(dto, req.user.userId);
+  }
+
+  @Get(':id/analytics')
+  @ApiOperation({ summary: 'Get analytics for a test case (pass rate, flakiness, duration trend)' })
+  @ApiQuery({ name: 'days', required: false, description: 'Number of days to analyze (default: 30)' })
+  async getAnalytics(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('days') days?: string,
+  ) {
+    return this.analyticsService.getAnalytics(id, days ? parseInt(days, 10) : 30);
   }
 
   @Get(':id')

@@ -11,13 +11,13 @@ const variants = {
   outline: 'border border-border text-foreground',
 };
 
-interface BadgeProps {
+interface BadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
   variant?: keyof typeof variants;
   children: React.ReactNode;
   className?: string;
 }
 
-export function Badge({ variant = 'default', children, className }: BadgeProps) {
+export function Badge({ variant = 'default', children, className, ...props }: BadgeProps) {
   return (
     <span
       className={cn(
@@ -25,6 +25,7 @@ export function Badge({ variant = 'default', children, className }: BadgeProps) 
         variants[variant],
         className,
       )}
+      {...props}
     >
       {children}
     </span>

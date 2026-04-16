@@ -35,9 +35,19 @@ export default function DevicesPage() {
   const devicesFetcher = useCallback(() => api.getDevices(), []);
   const { data: devices, isLoading, refetch } = useApi<Device[]>(devicesFetcher);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editingDevice, setEditingDevice] = useState<Device | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [form, setForm] = useState({
+    name: '',
+    platform: 'ANDROID' as DevicePlatform,
+    serialNumber: '',
+    ipAddress: '',
+    model: '',
+    osVersion: '',
+  });
+  const [editForm, setEditForm] = useState({
     name: '',
     platform: 'ANDROID' as DevicePlatform,
     serialNumber: '',
@@ -64,6 +74,44 @@ export default function DevicesPage() {
       refetch();
     } catch (err: any) {
       setError(err.message || 'Failed to register device');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleEditOpen = (device: Device) => {
+    setEditingDevice(device);
+    setEditForm({
+      name: device.name,
+      platform: device.platform as DevicePlatform,
+      serialNumber: device.serialNumber || '',
+      ipAddress: device.ipAddress || '',
+      model: device.model || '',
+      osVersion: device.osVersion || '',
+    });
+    setError('');
+    setEditDialogOpen(true);
+  };
+
+  const handleEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingDevice) return;
+    setError('');
+    setSubmitting(true);
+    try {
+      await api.updateDevice(editingDevice.id, {
+        name: editForm.name,
+        platform: editForm.platform,
+        serialNumber: editForm.serialNumber || undefined,
+        ipAddress: editForm.ipAddress || undefined,
+        model: editForm.model || undefined,
+        osVersion: editForm.osVersion || undefined,
+      });
+      setEditDialogOpen(false);
+      setEditingDevice(null);
+      refetch();
+    } catch (err: any) {
+      setError(err.message || 'Failed to update device');
     } finally {
       setSubmitting(false);
     }
@@ -129,7 +177,7 @@ export default function DevicesPage() {
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-1">
-                      <Button variant="ghost" size="sm" title="Edit">
+                      <Button variant="ghost" size="sm" title="Edit" onClick={() => handleEditOpen(device)}>
                         <Pencil className="h-3.5 w-3.5" />
                       </Button>
                       <Button variant="ghost" size="sm" title="Delete" onClick={() => handleDelete(device.id)}>
@@ -194,6 +242,61 @@ export default function DevicesPage() {
             </Button>
             <Button type="submit" loading={submitting}>
               Register
+            </Button>
+          </div>
+        </form>
+      </Dialog>
+
+      <Dialog open={editDialogOpen} onClose={() => setEditDialogOpen(false)} title="Edit Device">
+        <form onSubmit={handleEditSubmit} className="space-y-4">
+          {error && (
+            <div className="rounded-[var(--radius)] border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+              {error}
+            </div>
+          )}
+          <Input
+            label="Name"
+            placeholder="My Test Device"
+            value={editForm.name}
+            onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+            required
+          />
+          <Select
+            label="Platform"
+            options={platformOptions}
+            value={editForm.platform}
+            onChange={(e) => setEditForm({ ...editForm, platform: e.target.value as DevicePlatform })}
+          />
+          <Input
+            label="Serial Number"
+            placeholder="Optional"
+            value={editForm.serialNumber}
+            onChange={(e) => setEditForm({ ...editForm, serialNumber: e.target.value })}
+          />
+          <Input
+            label="IP Address"
+            placeholder="192.168.1.100"
+            value={editForm.ipAddress}
+            onChange={(e) => setEditForm({ ...editForm, ipAddress: e.target.value })}
+          />
+          <Input
+            label="Model"
+            placeholder="Pixel 7, Surface Pro, etc."
+            value={editForm.model}
+            onChange={(e) => setEditForm({ ...editForm, model: e.target.value })}
+          />
+          <Input
+            label="OS Version"
+            placeholder="Android 14, Windows 11, etc."
+            value={editForm.osVersion}
+            onChange={(e) => setEditForm({ ...editForm, osVersion: e.target.value })}
+          />
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" type="button" onClick={() => setEditDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" loading={submitting}>
+              Save Changes
             </Button>
           </div>
         </form>

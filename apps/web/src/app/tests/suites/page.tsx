@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback } from 'react';
+import Link from 'next/link';
 import { Plus, Trash2 } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Button } from '@/components/ui/Button';
@@ -70,7 +71,11 @@ export default function TestSuitesPage() {
             <TableBody>
               {suites.map((suite) => (
                 <TableRow key={suite.id}>
-                  <TableCell className="font-medium">{suite.name}</TableCell>
+                  <TableCell className="font-medium">
+                    <Link href={`/tests/suites/${suite.id}`} className="text-primary hover:underline">
+                      {suite.name}
+                    </Link>
+                  </TableCell>
                   <TableCell className="max-w-xs truncate text-sm text-muted-foreground">
                     {suite.description || '-'}
                   </TableCell>

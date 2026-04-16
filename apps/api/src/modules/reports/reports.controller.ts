@@ -20,7 +20,7 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 export class ReportsController {
   constructor(private readonly reportsService: ReportsService) {}
 
-  @Post('generate')
+  @Post()
   @ApiOperation({ summary: 'Generate a report for a test run' })
   async generate(
     @Body() dto: GenerateReportDto,

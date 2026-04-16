@@ -12,6 +12,7 @@ export class PlaywrightExecutor extends BaseExecutor {
     let context: BrowserContext | null = null;
     let page: Page | null = null;
     let overallStatus: 'passed' | 'failed' | 'error' = 'passed';
+    const consoleErrors: { level: string; text: string; timestamp: number; url: string }[] = [];
 
     try {
       await this.updateTestRunStatus(testRunId, 'running');
@@ -41,7 +42,6 @@ export class PlaywrightExecutor extends BaseExecutor {
       page = await context.newPage();
 
       // Console error and warning capture (F1)
-      const consoleErrors: { level: string; text: string; timestamp: number; url: string }[] = [];
       page.on('console', (msg) => {
         const type = msg.type();
         if (type === 'error' || type === 'warning') {

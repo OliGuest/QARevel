@@ -252,6 +252,10 @@ class ApiClient {
     return this.request<TestCase>(`/test-cases/${id}`);
   }
 
+  async getTestCaseAnalytics(id: string, days = 30): Promise<any> {
+    return this.request(`/test-cases/${id}/analytics?days=${days}`);
+  }
+
   async updateTestCase(id: string, data: Partial<TestCase>): Promise<TestCase> {
     return this.request<TestCase>(`/test-cases/${id}`, {
       method: 'PATCH',
@@ -298,6 +302,12 @@ class ApiClient {
 
   async getTestSuite(id: string): Promise<TestSuite> {
     return this.request<TestSuite>(`/test-suites/${id}`);
+  }
+
+  async removeCaseFromSuite(suiteId: string, caseId: string): Promise<void> {
+    return this.request<void>(`/test-suites/${suiteId}/cases/${caseId}`, {
+      method: 'DELETE',
+    });
   }
 
   async addCaseToSuite(suiteId: string, caseId: string, order: number): Promise<void> {
@@ -421,6 +431,33 @@ class ApiClient {
       method: 'POST',
       body: JSON.stringify(data),
     });
+  }
+
+  // Alerts
+  async getAlertRules(): Promise<any[]> {
+    return this.request('/alerts');
+  }
+
+  async createAlertRule(data: { name: string; conditionType: string; threshold: number; testCaseId?: string; environmentId?: string }): Promise<any> {
+    return this.request('/alerts', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateAlertRule(id: string, data: { name?: string; threshold?: number; enabled?: boolean }): Promise<any> {
+    return this.request(`/alerts/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteAlertRule(id: string): Promise<void> {
+    return this.request(`/alerts/${id}`, { method: 'DELETE' });
+  }
+
+  async evaluateAlerts(): Promise<{ evaluated: number; triggered: number }> {
+    return this.request('/alerts/evaluate', { method: 'POST' });
   }
 }
 

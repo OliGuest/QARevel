@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, Plus, Trash2, GripVertical, Save, Play } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, GripVertical, Save, Play, BarChart3, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
@@ -56,7 +56,9 @@ export default function TestCaseDetailPage() {
   const id = params.id as string;
 
   const testFetcher = useCallback(() => api.getTestCase(id), [id]);
+  const analyticsFetcher = useCallback(() => api.getTestCaseAnalytics(id), [id]);
   const { data: testCase, isLoading, refetch } = useApi<TestCase>(testFetcher);
+  const { data: analytics } = useApi<any>(analyticsFetcher);
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -345,6 +347,79 @@ export default function TestCaseDetailPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Analytics Card */}
+      {analytics && analytics.totalRuns > 0 && (
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <BarChart3 className="h-5 w-5" />
+              Analytics (last 30 days)
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+              <div>
+                <p className="text-sm text-muted-foreground">Total Runs</p>
+                <p className="text-2xl font-bold">{analytics.totalRuns}</p>
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Pass Rate</p>
+                <p className={`text-2xl font-bold ${analytics.passRate >= 80 ? 'text-emerald-600' : analytics.passRate >= 50 ? 'text-amber-500' : 'text-red-500'}`}>
+                  {analytics.passRate}%
+                </p>
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Flakiness</p>
+                <div className="flex items-center gap-2">
+                  <p className={`text-2xl font-bold ${analytics.flakinessScore > 50 ? 'text-red-500' : analytics.flakinessScore > 25 ? 'text-amber-500' : 'text-emerald-600'}`}>
+                    {analytics.flakinessScore}
+                  </p>
+                  {analytics.isFlakyCandidate && (
+                    <Badge variant="warning">Flaky</Badge>
+                  )}
+                </div>
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Avg Duration</p>
+                <p className="text-2xl font-bold">
+                  {analytics.avgDurationMs ? `${(analytics.avgDurationMs / 1000).toFixed(1)}s` : '-'}
+                </p>
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Duration Trend</p>
+                <div className="flex items-center gap-1">
+                  {analytics.durationTrend === 'improving' && <TrendingDown className="h-5 w-5 text-emerald-600" />}
+                  {analytics.durationTrend === 'degrading' && <TrendingUp className="h-5 w-5 text-red-500" />}
+                  {analytics.durationTrend === 'stable' && <Minus className="h-5 w-5 text-muted-foreground" />}
+                  <span className="text-sm capitalize">{analytics.durationTrend?.replace('_', ' ')}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Recent run results strip */}
+            {analytics.recentRuns?.length > 0 && (
+              <div className="mt-4 pt-4 border-t border-border">
+                <p className="text-xs font-medium text-muted-foreground mb-2">Recent Runs</p>
+                <div className="flex gap-1">
+                  {analytics.recentRuns.slice(0, 30).map((run: any) => (
+                    <div
+                      key={run.id}
+                      className={`w-3 h-8 rounded-sm ${
+                        run.status === 'passed' ? 'bg-emerald-500' :
+                        run.status === 'failed' ? 'bg-red-500' :
+                        run.status === 'error' ? 'bg-orange-500' :
+                        'bg-gray-300'
+                      }`}
+                      title={`${run.status} — ${run.durationMs ? `${(run.durationMs / 1000).toFixed(1)}s` : 'N/A'}`}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       <Dialog
         open={showRunDialog}
