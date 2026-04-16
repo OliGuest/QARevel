@@ -201,7 +201,7 @@ export default function RecordPage() {
                     <p className="text-sm font-semibold truncate pr-6">{env.name}</p>
                     <p className="text-xs text-muted-foreground truncate mt-1">{env.baseUrl}</p>
                     <Badge variant="secondary" className="text-[10px] mt-2">
-                      {env.type === 'local' || env.type === 'LOCAL' ? 'Local Device' : env.type}
+                      {String(env.type).toUpperCase() === 'LOCAL' ? 'Local Device' : env.type}
                     </Badge>
                   </div>
                 ))}

@@ -50,7 +50,7 @@ export default function InsightsPage() {
         api.getEnvironments().catch(() => []),
         api.getDevices().catch(() => []),
       ]);
-      setTestRuns(runs);
+      setTestRuns(runs as TestRunSummary[]);
       setTestCases(cases);
       setEnvironments(envs);
       setDevices(devs);

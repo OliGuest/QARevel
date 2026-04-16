@@ -113,7 +113,7 @@ export default function TestRunDetailPage() {
   // Fetch initial step results (for page reload mid-run)
   const [initialResults, setInitialResults] = useState<StepResult[]>([]);
   useEffect(() => {
-    api.getTestRunStepResults(id).then(setInitialResults).catch(() => {});
+    api.getTestRunStepResults(id).then((r) => setInitialResults(r as StepResult[])).catch(() => {});
   }, [id]);
 
   // Connect WebSocket
