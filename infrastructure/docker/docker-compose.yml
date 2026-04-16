@@ -8,11 +8,11 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - DATABASE_HOST=postgres
-      - DATABASE_PORT=5432
-      - DATABASE_NAME=qarevel
-      - DATABASE_USER=qarevel
-      - DATABASE_PASSWORD=qarevel
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_DATABASE=qarevel
+      - DB_USERNAME=qarevel
+      - DB_PASSWORD=qarevel
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - MINIO_ENDPOINT=minio
@@ -22,7 +22,7 @@ services:
       - MINIO_BUCKET=qarevel
       - JWT_PRIVATE_KEY_PATH=/app/keys/private.pem
       - JWT_PUBLIC_KEY_PATH=/app/keys/public.pem
-      - API_PORT=3000
+      - PORT=3000
     volumes:
       - ../../keys:/app/keys:ro
     depends_on:
@@ -65,11 +65,11 @@ services:
       context: ../..
       dockerfile: infrastructure/docker/Dockerfile.runner
     environment:
-      - DATABASE_HOST=postgres
-      - DATABASE_PORT=5432
-      - DATABASE_NAME=qarevel
-      - DATABASE_USER=qarevel
-      - DATABASE_PASSWORD=qarevel
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_DATABASE=qarevel
+      - DB_USERNAME=qarevel
+      - DB_PASSWORD=qarevel
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - MINIO_ENDPOINT=minio
