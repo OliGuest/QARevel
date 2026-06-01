@@ -12,6 +12,8 @@ COPY apps/runner apps/runner
 COPY packages/shared-types packages/shared-types
 COPY tsconfig.base.json .
 RUN npm run build --workspace=apps/runner
+COPY infrastructure/docker/runner-entrypoint.sh /usr/local/bin/runner-entrypoint.sh
+RUN chmod +x /usr/local/bin/runner-entrypoint.sh
 ENV DISPLAY=:99
 EXPOSE 6080
-CMD ["sh", "-c", "Xvfb :99 -screen 0 1920x1080x24 -nolisten tcp & sleep 1 && x11vnc -display :99 -nopw -listen 0.0.0.0 -forever -shared -rfbport 5900 & websockify --web /usr/share/novnc 6080 localhost:5900 & sleep 1 && node apps/runner/dist/main.js"]
+CMD ["/usr/local/bin/runner-entrypoint.sh"]
