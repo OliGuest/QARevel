@@ -9,3 +9,4 @@ keys/
 *.log
 coverage/
 .DS_Store
+backups/
