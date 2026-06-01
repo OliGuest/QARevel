@@ -6,7 +6,8 @@
     "dev": "ts-node src/main.ts",
     "build": "tsc",
     "start": "node dist/main.js",
-    "lint": "echo ok"
+    "lint": "echo ok",
+    "test": "jest"
   },
   "dependencies": {
     "bullmq": "^5.0.0",
@@ -19,6 +20,9 @@
   "devDependencies": {
     "typescript": "^5.7.0",
     "ts-node": "^10.9.0",
-    "@types/node": "^22.0.0"
+    "@types/node": "^22.0.0",
+    "@types/jest": "^30.0.0",
+    "jest": "^30.3.0",
+    "ts-jest": "^29.4.9"
   }
 }
