@@ -9,14 +9,22 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   constructor() {
     const publicKeyPath =
       process.env.JWT_PUBLIC_KEY_PATH ||
-      path.resolve(process.cwd(), '../../keys/jwt-public.pem');
+      path.resolve(process.cwd(), '../../keys/public.pem');
 
-    let secretOrKey: string | Buffer;
+    let secretOrKey: string | Buffer | undefined;
     try {
       secretOrKey = fs.readFileSync(publicKeyPath, 'utf8');
     } catch {
-      // Fallback to symmetric secret for development
-      secretOrKey = process.env.JWT_SECRET || 'dev-secret-change-me';
+      // No public key: only fall back to an explicitly-provided symmetric
+      // secret. Never a hardcoded default — must match auth.module.ts.
+      secretOrKey = process.env.JWT_SECRET;
+    }
+
+    if (!secretOrKey) {
+      throw new Error(
+        'JWT is not configured: no public key at JWT_PUBLIC_KEY_PATH and ' +
+          'JWT_SECRET is not set. Run `npm run generate:keys` or set JWT_SECRET.',
+      );
     }
 
     const algorithms = secretOrKey.toString().includes('BEGIN')

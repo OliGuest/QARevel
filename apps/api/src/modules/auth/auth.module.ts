@@ -23,8 +23,8 @@ function loadKey(envVar: string, filename: string): string | undefined {
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.registerAsync({
       useFactory: () => {
-        const privateKey = loadKey('JWT_PRIVATE_KEY_PATH', 'jwt-private.pem');
-        const publicKey = loadKey('JWT_PUBLIC_KEY_PATH', 'jwt-public.pem');
+        const privateKey = loadKey('JWT_PRIVATE_KEY_PATH', 'private.pem');
+        const publicKey = loadKey('JWT_PUBLIC_KEY_PATH', 'public.pem');
 
         if (privateKey && publicKey) {
           return {
@@ -35,9 +35,20 @@ function loadKey(envVar: string, filename: string): string | undefined {
           };
         }
 
-        // Fallback to symmetric for development
+        // No RS256 keys: only allow a symmetric secret if it is explicitly
+        // provided. Refuse to start on a hardcoded default — a guessable
+        // signing key is an auth bypass.
+        const secret = process.env.JWT_SECRET;
+        if (!secret) {
+          throw new Error(
+            'JWT is not configured: no RS256 key pair found ' +
+              '(JWT_PRIVATE_KEY_PATH / JWT_PUBLIC_KEY_PATH) and JWT_SECRET is not set. ' +
+              'Run `npm run generate:keys` to create RS256 keys, or set JWT_SECRET. ' +
+              'Refusing to start with an insecure default signing key.',
+          );
+        }
         return {
-          secret: process.env.JWT_SECRET || 'dev-secret-change-me',
+          secret,
           signOptions: { expiresIn: '1h' },
         };
       },
