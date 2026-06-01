@@ -16,6 +16,9 @@ import {
   Clock,
   Square,
   Repeat,
+  Settings2,
+  Users,
+  Gauge,
 } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
@@ -28,11 +31,18 @@ import { api } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
 interface RunResult {
+  uid: string;
   testCaseId: string;
   title: string;
   runId: string;
   status: 'pending' | 'running' | 'passed' | 'failed' | 'error';
+  worker?: number;
 }
+
+// Load-test duration presets (minutes).
+const DURATION_PRESETS = [15, 30, 60, 120, 240, 480];
+const fmtDuration = (min: number) =>
+  min < 60 ? `${min}m` : Number.isInteger(min / 60) ? `${min / 60}h` : `${(min / 60).toFixed(1)}h`;
 
 export default function AutomationPage() {
   const router = useRouter();
@@ -58,6 +68,14 @@ export default function AutomationPage() {
   const [loadDurationMin, setLoadDurationMin] = useState(30);
   const [loadElapsed, setLoadElapsed] = useState(0);
   const [loadCycles, setLoadCycles] = useState(0);
+
+  // Load-test advanced options
+  const [loadConcurrency, setLoadConcurrency] = useState(1);
+  const [loadOrder, setLoadOrder] = useState<'random' | 'sequential'>('random');
+  const [loadThinkSec, setLoadThinkSec] = useState(0);
+  const [loadStopOnFailure, setLoadStopOnFailure] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const uidRef = useRef(0);
 
   // New category
   const [showNewCategory, setShowNewCategory] = useState(false);
@@ -187,6 +205,15 @@ export default function AutomationPage() {
     }
   };
 
+  // Append a result row and return its stable uid (safe under concurrency).
+  const appendResult = (item: Omit<RunResult, 'uid'>): string => {
+    const uid = String(++uidRef.current);
+    setResults((prev) => [...prev, { uid, ...item }]);
+    return uid;
+  };
+  const patchResult = (uid: string, patch: Partial<RunResult>) =>
+    setResults((prev) => prev.map((r) => (r.uid === uid ? { ...r, ...patch } : r)));
+
   const handleRunRandom = async () => {
     if (selectedIds.size === 0 || !envId || !deviceId) return;
     setRunning(true);
@@ -196,58 +223,60 @@ export default function AutomationPage() {
     setLoadElapsed(0);
 
     const selected = (testCases || []).filter((tc: any) => selectedIds.has(tc.id));
+    const isLoad = runMode === 'load';
     const startTime = Date.now();
-    const durationMs = runMode === 'load' ? loadDurationMin * 60 * 1000 : 0;
+    const durationMs = isLoad ? loadDurationMin * 60 * 1000 : 0;
+    const concurrency = isLoad ? Math.max(1, Math.min(20, loadConcurrency)) : 1;
+    const thinkMs = isLoad ? Math.max(0, loadThinkSec) * 1000 : 0;
 
     // Elapsed timer for load mode
     let elapsedInterval: NodeJS.Timeout | null = null;
-    if (runMode === 'load') {
+    if (isLoad) {
       elapsedInterval = setInterval(() => {
         setLoadElapsed(Math.floor((Date.now() - startTime) / 1000));
       }, 1000);
     }
 
-    let cycle = 0;
-    let shouldStop = false;
+    let cyclesStarted = 0;
+    let stopAll = false;
+    const timeLeft = () => !isLoad || Date.now() - startTime < durationMs;
+    const orderList = () =>
+      loadOrder === 'random' ? [...selected].sort(() => Math.random() - 0.5) : [...selected];
 
-    do {
-      cycle++;
-      setLoadCycles(cycle);
+    // Each virtual user loops over the selected tests until time/stop.
+    const worker = async (workerId: number) => {
+      let localPass = 0;
+      do {
+        if (stopRef.current || stopAll || !timeLeft()) break;
+        localPass++;
+        const myCycle = ++cyclesStarted;
+        setLoadCycles(myCycle);
+        const list = orderList();
 
-      const shuffled = [...selected].sort(() => Math.random() - 0.5);
+        for (const tc of list) {
+          if (stopRef.current || stopAll || !timeLeft()) break;
+          const uid = appendResult({
+            testCaseId: tc.id,
+            title: `${isLoad ? (concurrency > 1 ? `[U${workerId + 1}·#${localPass}] ` : `[#${localPass}] `) : ''}${tc.title}`,
+            runId: '',
+            status: 'running',
+            worker: workerId,
+          });
+          const { runId, status } = await runOneTest(tc);
+          patchResult(uid, { runId, status: status as any });
 
-      const cycleResults: RunResult[] = shuffled.map((tc: any) => ({
-        testCaseId: tc.id,
-        title: `${runMode === 'load' ? `[#${cycle}] ` : ''}${tc.title}`,
-        runId: '',
-        status: 'pending' as const,
-      }));
+          if (loadStopOnFailure && (status === 'failed' || status === 'error')) {
+            stopAll = true;
+            stopRef.current = true;
+            break;
+          }
+          if (thinkMs && timeLeft() && !stopAll) await new Promise((r) => setTimeout(r, thinkMs));
+        }
+        // Single mode: one pass per worker. Load mode: loop until time expires.
+      } while (isLoad && !stopAll && !stopRef.current && timeLeft());
+    };
 
-      setResults((prev) => [...prev, ...cycleResults]);
-
-      for (let i = 0; i < shuffled.length; i++) {
-        // Check stop conditions
-        if (stopRef.current) { shouldStop = true; break; }
-        if (runMode === 'load' && Date.now() - startTime >= durationMs) { shouldStop = true; break; }
-
-        const globalIdx = (cycle - 1) * shuffled.length + i;
-        const tc = shuffled[i];
-
-        setResults((prev) =>
-          prev.map((r, idx) => idx === globalIdx ? { ...r, status: 'running' } : r),
-        );
-
-        const { runId, status } = await runOneTest(tc);
-
-        setResults((prev) =>
-          prev.map((r, idx) => idx === globalIdx ? { ...r, runId, status: status as any } : r),
-        );
-      }
-
-      if (shouldStop) break;
-
-      // In single mode, run once. In load mode, loop until time expires
-    } while (runMode === 'load' && Date.now() - startTime < durationMs);
+    await Promise.all(Array.from({ length: concurrency }, (_, i) => worker(i)));
 
     if (elapsedInterval) clearInterval(elapsedInterval);
     setLoadElapsed(Math.floor((Date.now() - startTime) / 1000));
@@ -262,6 +291,7 @@ export default function AutomationPage() {
   const failedCount = results.filter((r) => r.status === 'failed' || r.status === 'error').length;
   const completedCount = passedCount + failedCount;
   const progressPct = results.length > 0 ? Math.round((completedCount / results.length) * 100) : 0;
+  const throughput = loadElapsed > 0 ? completedCount / (loadElapsed / 60) : 0;
   const allFilteredSelected = filteredCases.length > 0 && filteredCases.every((tc: any) => selectedIds.has(tc.id));
 
   return (
@@ -317,19 +347,37 @@ export default function AutomationPage() {
               {runMode === 'load' && (
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium text-foreground">Duration</label>
-                  <div className="flex rounded-lg border border-border overflow-hidden">
-                    {[15, 30, 60, 120].map((min) => (
-                      <button
-                        key={min}
-                        onClick={() => setLoadDurationMin(min)}
-                        className={cn('px-3 py-2 text-sm font-medium transition-colors border-l border-border first:border-l-0',
-                          loadDurationMin === min ? 'bg-primary text-white' : 'bg-background text-muted-foreground hover:text-foreground')}
-                      >
-                        {min < 60 ? `${min}m` : `${min / 60}h`}
-                      </button>
-                    ))}
+                  <div className="flex items-center gap-2">
+                    <div className="flex rounded-lg border border-border overflow-hidden">
+                      {DURATION_PRESETS.map((min) => (
+                        <button
+                          key={min}
+                          onClick={() => setLoadDurationMin(min)}
+                          className={cn('px-3 py-2 text-sm font-medium transition-colors border-l border-border first:border-l-0',
+                            loadDurationMin === min ? 'bg-primary text-white' : 'bg-background text-muted-foreground hover:text-foreground')}
+                        >
+                          {fmtDuration(min)}
+                        </button>
+                      ))}
+                    </div>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={loadDurationMin}
+                      onChange={(e) => setLoadDurationMin(Math.max(1, parseInt(e.target.value || '1', 10)))}
+                      className="w-20"
+                      title="Custom duration (minutes)"
+                    />
+                    <span className="text-xs text-muted-foreground">min</span>
                   </div>
                 </div>
+              )}
+
+              {runMode === 'load' && (
+                <Button variant="outline" className="h-10" onClick={() => setShowAdvanced((v) => !v)}>
+                  <Settings2 className="h-4 w-4" />
+                  Advanced
+                </Button>
               )}
 
               <div className="flex-1" />
@@ -347,10 +395,79 @@ export default function AutomationPage() {
                   className="h-10"
                 >
                   {runMode === 'load' ? <Repeat className="h-4 w-4" /> : <Shuffle className="h-4 w-4" />}
-                  {runMode === 'load' ? `Load Test ${selectedIds.size} for ${loadDurationMin < 60 ? `${loadDurationMin}m` : `${loadDurationMin / 60}h`}` : `Run ${selectedIds.size} Random`}
+                  {runMode === 'load'
+                    ? `Load Test ${selectedIds.size}${loadConcurrency > 1 ? ` ×${loadConcurrency}` : ''} for ${fmtDuration(loadDurationMin)}`
+                    : `Run ${selectedIds.size} Random`}
                 </Button>
               )}
             </div>
+
+            {/* Row 3: Advanced load options */}
+            {runMode === 'load' && showAdvanced && (
+              <div className="rounded-lg border border-dashed border-border bg-muted/30 p-4">
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                  {/* Concurrency */}
+                  <div className="space-y-1.5">
+                    <label className="flex items-center gap-1.5 text-sm font-medium text-foreground">
+                      <Users className="h-3.5 w-3.5" /> Concurrent users
+                    </label>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={20}
+                      value={loadConcurrency}
+                      onChange={(e) => setLoadConcurrency(Math.max(1, Math.min(20, parseInt(e.target.value || '1', 10))))}
+                    />
+                    <p className="text-[11px] text-muted-foreground">Parallel runners (1–20)</p>
+                  </div>
+
+                  {/* Order */}
+                  <div className="space-y-1.5">
+                    <label className="flex items-center gap-1.5 text-sm font-medium text-foreground">
+                      <Shuffle className="h-3.5 w-3.5" /> Order
+                    </label>
+                    <Select
+                      options={[
+                        { label: 'Random (shuffle)', value: 'random' },
+                        { label: 'Sequential', value: 'sequential' },
+                      ]}
+                      value={loadOrder}
+                      onChange={(e) => setLoadOrder(e.target.value as 'random' | 'sequential')}
+                    />
+                    <p className="text-[11px] text-muted-foreground">Per-cycle test order</p>
+                  </div>
+
+                  {/* Think time */}
+                  <div className="space-y-1.5">
+                    <label className="flex items-center gap-1.5 text-sm font-medium text-foreground">
+                      <Clock className="h-3.5 w-3.5" /> Think time
+                    </label>
+                    <Input
+                      type="number"
+                      min={0}
+                      value={loadThinkSec}
+                      onChange={(e) => setLoadThinkSec(Math.max(0, parseInt(e.target.value || '0', 10)))}
+                    />
+                    <p className="text-[11px] text-muted-foreground">Delay between tests (sec)</p>
+                  </div>
+
+                  {/* Stop on failure */}
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium text-foreground">Failure handling</label>
+                    <label className="flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={loadStopOnFailure}
+                        onChange={(e) => setLoadStopOnFailure(e.target.checked)}
+                        className="h-4 w-4 accent-primary"
+                      />
+                      <span className="text-sm">Stop on first failure</span>
+                    </label>
+                    <p className="text-[11px] text-muted-foreground">Abort the whole run on a fail</p>
+                  </div>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -362,13 +479,21 @@ export default function AutomationPage() {
                 <span className="flex items-center gap-2">
                   Run Results
                   {loadCycles > 1 && <Badge variant="secondary" className="text-xs">Cycle {loadCycles}</Badge>}
+                  {runMode === 'load' && loadConcurrency > 1 && (
+                    <Badge variant="outline" className="text-xs flex items-center gap-1"><Users className="h-3 w-3" />×{loadConcurrency}</Badge>
+                  )}
                 </span>
                 <div className="flex gap-3 text-sm font-normal items-center">
-                  {running && loadElapsed > 0 && (
+                  {loadElapsed > 0 && (
                     <span className="flex items-center gap-1 text-muted-foreground font-mono tabular-nums">
                       <Clock className="h-3.5 w-3.5" />
                       {Math.floor(loadElapsed / 60)}:{(loadElapsed % 60).toString().padStart(2, '0')}
-                      {runMode === 'load' && <span className="text-muted-foreground/60">/ {loadDurationMin < 60 ? `${loadDurationMin}m` : `${loadDurationMin / 60}h`}</span>}
+                      {runMode === 'load' && <span className="text-muted-foreground/60">/ {fmtDuration(loadDurationMin)}</span>}
+                    </span>
+                  )}
+                  {runMode === 'load' && throughput > 0 && (
+                    <span className="flex items-center gap-1 text-muted-foreground tabular-nums">
+                      <Gauge className="h-3.5 w-3.5" />{throughput.toFixed(1)}/min
                     </span>
                   )}
                   <span className="text-green-600 dark:text-green-400 font-medium">{passedCount} passed</span>
@@ -390,7 +515,7 @@ export default function AutomationPage() {
               <div className="space-y-1.5">
                 {results.map((r, idx) => (
                   <div
-                    key={r.testCaseId + idx}
+                    key={r.uid}
                     className={cn(
                       'flex items-center gap-3 rounded-lg border px-4 py-2.5',
                       r.status === 'passed' ? 'border-green-200/60 bg-green-50/40 dark:border-green-900/40 dark:bg-green-950/10' :
