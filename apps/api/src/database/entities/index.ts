@@ -1,6 +1,7 @@
 export { User } from './user.entity';
 export { Device } from './device.entity';
 export { Environment } from './environment.entity';
+export { DeviceProfile } from './device-profile.entity';
 export { AppTarget } from './app-target.entity';
 export { TestCase } from './test-case.entity';
 export { TestStep } from './test-step.entity';

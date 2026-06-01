@@ -28,27 +28,45 @@ import { useApi } from '@/hooks/useApi';
 import { useRecordingSocket } from '@/hooks/useRecordingSocket';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/utils';
-import type { Environment } from '@qarevel/shared-types';
+import type { Environment, DeviceProfile } from '@qarevel/shared-types';
 
 type RecordingState = 'idle' | 'recording' | 'stopping';
 
-const DEVICE_PROFILES = [
-  { key: 'web-desktop',       label: 'Desktop',           platform: 'web',     icon: Monitor,            viewport: '1920×1080' },
-  { key: 'web-mobile',        label: 'Mobile (iOS)',      platform: 'web',     icon: Smartphone,         viewport: '390×844' },
-  { key: 'web-tablet',        label: 'Tablet (iPad)',     platform: 'web',     icon: Tablet,             viewport: '820×1180' },
-  { key: 'web-kiosk-vertical',label: 'Kiosk Vertical',   platform: 'web',     icon: RectangleVertical,  viewport: '1080×1920' },
-  { key: 'android-phone',     label: 'Android Phone',     platform: 'android', icon: Smartphone,         viewport: '412×915' },
-  { key: 'android-tablet',    label: 'Android Tablet',    platform: 'android', icon: Tablet,             viewport: '800×1280' },
-] as const;
+// Map the stored icon name to a lucide component (falls back by platform).
+const PROFILE_ICONS: Record<string, typeof Monitor> = {
+  monitor: Monitor,
+  smartphone: Smartphone,
+  tablet: Tablet,
+  'rectangle-vertical': RectangleVertical,
+};
+function profileIcon(p: { icon?: string | null; platform: string }) {
+  return (p.icon && PROFILE_ICONS[p.icon]) || (p.platform === 'android' ? Smartphone : Monitor);
+}
+// Pick a sensible icon for a newly-created profile from its dimensions.
+function pickIcon(platform: string, w: number, h: number): string {
+  if (platform === 'android') return h >= w ? 'smartphone' : 'tablet';
+  if (h > w) return h / w >= 1.5 ? 'rectangle-vertical' : 'tablet';
+  return w >= 1440 ? 'monitor' : 'tablet';
+}
 
 export default function RecordPage() {
   const router = useRouter();
   const envsFetcher = useCallback(() => api.getEnvironments(), []);
   const { data: environments, isLoading, refetch } = useApi<Environment[]>(envsFetcher);
+  const profilesFetcher = useCallback(() => api.getDeviceProfiles(), []);
+  const { data: deviceProfiles, refetch: refetchProfiles } = useApi<DeviceProfile[]>(profilesFetcher);
 
   const [state, setState] = useState<RecordingState>('idle');
   const [selectedEnvId, setSelectedEnvId] = useState<string | null>(null);
-  const [selectedDevice, setSelectedDevice] = useState('web-desktop');
+  const [selectedDevice, setSelectedDevice] = useState('');
+
+  // Inline add device profile
+  const [showAddProfile, setShowAddProfile] = useState(false);
+  const [newProfilePlatform, setNewProfilePlatform] = useState<'web' | 'android'>('web');
+  const [newProfileLabel, setNewProfileLabel] = useState('');
+  const [newProfileW, setNewProfileW] = useState('');
+  const [newProfileH, setNewProfileH] = useState('');
+  const [addingProfile, setAddingProfile] = useState(false);
   const [deviceSerial, setDeviceSerial] = useState('');
   const [recordingName, setRecordingName] = useState('');
   const [recordingId, setRecordingId] = useState<string | null>(null);
@@ -96,6 +114,52 @@ export default function RecordPage() {
     }
   };
 
+  const handleAddProfile = async () => {
+    const w = parseInt(newProfileW, 10);
+    const h = parseInt(newProfileH, 10);
+    if (!newProfileLabel.trim() || !w || !h) return;
+    setAddingProfile(true);
+    try {
+      const created = await api.createDeviceProfile({
+        label: newProfileLabel.trim(),
+        platform: newProfilePlatform,
+        width: w,
+        height: h,
+        icon: pickIcon(newProfilePlatform, w, h),
+      });
+      setNewProfileLabel('');
+      setNewProfileW('');
+      setNewProfileH('');
+      setNewProfilePlatform('web');
+      setShowAddProfile(false);
+      await refetchProfiles();
+      setSelectedDevice(created.key);
+    } catch (err: any) {
+      setError(err.message || 'Failed to add device profile');
+    } finally {
+      setAddingProfile(false);
+    }
+  };
+
+  const handleDeleteProfile = async (id: string, key: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      await api.deleteDeviceProfile(id);
+      if (selectedDevice === key) setSelectedDevice('');
+      refetchProfiles();
+    } catch (err: any) {
+      setError(err.message || 'Failed to delete profile');
+    }
+  };
+
+  // Default the device selection to the first available profile.
+  useEffect(() => {
+    if (!deviceProfiles?.length) return;
+    if (!selectedDevice || !deviceProfiles.some((p) => p.key === selectedDevice)) {
+      setSelectedDevice(deviceProfiles[0].key);
+    }
+  }, [deviceProfiles, selectedDevice]);
+
   const { stats, isStopped, isConnected } = useRecordingSocket(recordingId);
 
   useEffect(() => {
@@ -119,11 +183,14 @@ export default function RecordPage() {
     if (!selectedEnvId) return;
     setError('');
     try {
-      const isAndroid = selectedDevice.startsWith('android-');
+      const profile = deviceProfiles?.find((p) => p.key === selectedDevice);
+      const isAndroid = profile?.platform === 'android';
       const result = await api.startRecording({
         environmentId: selectedEnvId,
         name: recordingName.trim() || undefined,
         deviceProfile: selectedDevice,
+        // Send the viewport so custom profiles take effect in the runner.
+        viewport: profile ? { width: profile.widthPx, height: profile.heightPx } : undefined,
         deviceSerial: isAndroid && deviceSerial.trim() ? deviceSerial.trim() : undefined,
       });
       setRecordingId(result.id);
@@ -146,6 +213,8 @@ export default function RecordPage() {
   };
 
   const selectedEnv = environments?.find((e) => e.id === selectedEnvId);
+  const selectedProfile = deviceProfiles?.find((p) => p.key === selectedDevice);
+  const isAndroid = selectedProfile?.platform === 'android';
 
   // ── IDLE ──
   if (state === 'idle') {
@@ -277,15 +346,15 @@ export default function RecordPage() {
               <div className="space-y-2">
                 <p className="text-sm font-medium text-foreground">Device Profile</p>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  {DEVICE_PROFILES.map((profile) => {
-                    const Icon = profile.icon;
+                  {(deviceProfiles || []).map((profile) => {
+                    const Icon = profileIcon(profile);
                     const selected = selectedDevice === profile.key;
                     return (
-                      <button
+                      <div
                         key={profile.key}
                         onClick={() => setSelectedDevice(profile.key)}
                         className={cn(
-                          'flex items-center gap-3 rounded-xl border px-4 py-3 text-left transition-all',
+                          'group relative flex items-center gap-3 rounded-xl border px-4 py-3 text-left cursor-pointer transition-all',
                           selected
                             ? 'border-primary bg-primary/5 ring-1 ring-primary/20'
                             : 'border-border hover:border-primary/40 hover:bg-accent/50',
@@ -293,17 +362,87 @@ export default function RecordPage() {
                       >
                         <Icon className={cn('h-5 w-5 shrink-0', selected ? 'text-primary' : 'text-muted-foreground')} />
                         <div className="min-w-0">
-                          <p className={cn('text-sm font-medium truncate', selected ? 'text-primary' : 'text-foreground')}>{profile.label}</p>
-                          <p className="text-[11px] text-muted-foreground">{profile.viewport}</p>
+                          <p className={cn('text-sm font-medium truncate pr-4', selected ? 'text-primary' : 'text-foreground')}>{profile.label}</p>
+                          <p className="text-[11px] text-muted-foreground">{profile.widthPx}×{profile.heightPx}</p>
                         </div>
-                      </button>
+                        <button
+                          onClick={(e) => handleDeleteProfile(profile.id, profile.key, e)}
+                          title="Delete profile"
+                          className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
                     );
                   })}
                 </div>
+
+                {/* Add new device profile - inline */}
+                {showAddProfile ? (
+                  <div className="rounded-lg border border-dashed border-primary/40 bg-primary/5 px-4 py-3 space-y-3">
+                    <div className="flex gap-1 p-0.5 rounded-lg bg-muted/60 w-fit">
+                      <button
+                        onClick={() => setNewProfilePlatform('web')}
+                        className={cn(
+                          'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all',
+                          newProfilePlatform === 'web' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
+                        )}
+                      >
+                        <Monitor className="h-3 w-3" /> Web
+                      </button>
+                      <button
+                        onClick={() => setNewProfilePlatform('android')}
+                        className={cn(
+                          'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all',
+                          newProfilePlatform === 'android' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
+                        )}
+                      >
+                        <Smartphone className="h-3 w-3" /> Android
+                      </button>
+                    </div>
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder="Label (e.g. Kiosk Landscape)"
+                        value={newProfileLabel}
+                        onChange={(e) => setNewProfileLabel(e.target.value)}
+                      />
+                      <Input
+                        type="number"
+                        placeholder="Width"
+                        value={newProfileW}
+                        onChange={(e) => setNewProfileW(e.target.value)}
+                        className="w-28"
+                      />
+                      <Input
+                        type="number"
+                        placeholder="Height"
+                        value={newProfileH}
+                        onChange={(e) => setNewProfileH(e.target.value)}
+                        className="w-28"
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <Button size="sm" onClick={handleAddProfile} loading={addingProfile}>
+                        <Plus className="h-3.5 w-3.5" /> Add
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => { setShowAddProfile(false); setNewProfileLabel(''); setNewProfileW(''); setNewProfileH(''); setNewProfilePlatform('web'); }}>
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setShowAddProfile(true)}
+                    className="flex items-center gap-2 w-full rounded-lg border border-dashed border-border px-4 py-2.5 text-sm text-muted-foreground hover:text-primary hover:border-primary/40 transition-colors"
+                  >
+                    <Plus className="h-4 w-4" />
+                    Add Device Profile
+                  </button>
+                )}
               </div>
 
               {/* Android device connection */}
-              {selectedDevice.startsWith('android-') && (
+              {isAndroid && (
                 <div className="rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/20 px-4 py-3 space-y-2">
                   <p className="text-xs font-medium text-amber-800 dark:text-amber-200">
                     Android device required — connect via USB or Wi-Fi ADB
@@ -326,7 +465,7 @@ export default function RecordPage() {
               />
               <Button className="w-full h-11" onClick={handleLaunch}>
                 <Play className="h-4 w-4" />
-                {selectedDevice.startsWith('android-')
+                {isAndroid
                   ? `Launch on Android — ${selectedEnv?.name}`
                   : `Launch Browser — ${selectedEnv?.name}`}
               </Button>
@@ -370,7 +509,7 @@ export default function RecordPage() {
               <span className="text-muted-foreground font-mono text-xs truncate">{selectedEnv.baseUrl}</span>
               <ExternalLink className="h-3 w-3 text-muted-foreground" />
               <Badge variant="secondary" className="text-[10px] ml-1">
-                {DEVICE_PROFILES.find(p => p.key === selectedDevice)?.label || selectedDevice}
+                {selectedProfile?.label || selectedDevice}
               </Badge>
             </div>
           )}

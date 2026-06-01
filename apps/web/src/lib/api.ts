@@ -8,6 +8,8 @@ import type {
   Environment,
   CreateEnvironmentRequest,
   HealthCheckResponse,
+  DeviceProfile,
+  CreateDeviceProfileRequest,
   AppTarget,
   CreateAppTargetRequest,
   TestCase,
@@ -210,6 +212,22 @@ class ApiClient {
 
   async checkEnvironment(id: string): Promise<HealthCheckResponse> {
     return this.request<HealthCheckResponse>(`/environments/${id}/health`);
+  }
+
+  // Device Profiles
+  async getDeviceProfiles(): Promise<DeviceProfile[]> {
+    return this.request<DeviceProfile[]>('/device-profiles');
+  }
+
+  async createDeviceProfile(data: CreateDeviceProfileRequest): Promise<DeviceProfile> {
+    return this.request<DeviceProfile>('/device-profiles', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteDeviceProfile(id: string): Promise<void> {
+    return this.request<void>(`/device-profiles/${id}`, { method: 'DELETE' });
   }
 
   // App Targets

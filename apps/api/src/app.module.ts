@@ -10,6 +10,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
 import { DevicesModule } from './modules/devices/devices.module';
 import { EnvironmentsModule } from './modules/environments/environments.module';
+import { DeviceProfilesModule } from './modules/device-profiles/device-profiles.module';
 import { AppTargetsModule } from './modules/app-targets/app-targets.module';
 import { TestsModule } from './modules/tests/tests.module';
 import { SessionsModule } from './modules/sessions/sessions.module';
@@ -82,6 +83,7 @@ import { HealthModule } from './modules/health/health.module';
     UsersModule,
     DevicesModule,
     EnvironmentsModule,
+    DeviceProfilesModule,
     AppTargetsModule,
     TestsModule,
     SessionsModule,
